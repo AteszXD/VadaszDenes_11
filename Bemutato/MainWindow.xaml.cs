@@ -30,6 +30,9 @@ namespace VadaszDenes
         private FrameworkElement target; // Ezt a gombot/képet követjük
         private double smoothness = 0.1; // 0.0 és 1.0 között (kisebb = simább/lassabb)
 
+        // New: current rover image filename (can be changed when moving left)
+        private string roverImageName = "rover.png";
+
         public MainWindow()
         {
             BetoltTerkep();
@@ -83,7 +86,8 @@ namespace VadaszDenes
                             overlayPath = System.IO.Path.Combine(baseDir, "Assetts", "zold_asvany.png");
                             break;
                         case "S":
-                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", "rover.png");
+                            // Use the current roverImageName so the initial display matches facing state
+                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", roverImageName);
                             break;
                             // case "." -> no overlay (only mars visible)
                     }
@@ -237,6 +241,16 @@ namespace VadaszDenes
             {
                 if (terkep[ujX, ujY] == ".")
                 {
+                    // If moving left, change rover image to left-facing sprite; otherwise default
+                    if (eltolasY == -1)
+                    {
+                        roverImageName = "rover_left.png";
+                    }
+                    else
+                    {
+                        roverImageName = "rover.png";
+                    }
+
                     // 1. Régi pozíció frissítése (üres lesz)
                     terkep[roverX, roverY] = ".";
                     FrissitsEgyCellat(roverX, roverY);
@@ -279,7 +293,10 @@ namespace VadaszDenes
                 case "B": overlayName = "kek_asvany.png"; break;
                 case "Y": overlayName = "sarga_asvany.png"; break;
                 case "G": overlayName = "zold_asvany.png"; break;
-                case "S": overlayName = "rover.png"; break;
+                case "S":
+                    // Use the dynamic roverImageName so facing is reflected
+                    overlayName = roverImageName;
+                    break;
                 default: overlayName = null; break;
             }
 
