@@ -24,6 +24,9 @@ namespace VadaszDenes
         string[,] terkep = new string[50, 50];
         Button[,] jatekter = new Button[50, 50];
 
+        private int roverX;
+        private int roverY;
+
         private FrameworkElement target; // Ezt a gombot/képet követjük
         private double smoothness = 0.1; // 0.0 és 1.0 között (kisebb = simább/lassabb)
 
@@ -34,6 +37,7 @@ namespace VadaszDenes
             JatekterGeneralas();
             JatekterMegjelenites();
 
+            this.KeyDown += MainWindow_KeyDown;
             CompositionTarget.Rendering += UpdateCamera;
         }
 
@@ -104,6 +108,8 @@ namespace VadaszDenes
 
                     // Assign the layered Grid as the button's content
                     jatekter[i, j].Content = layer;
+
+                    this.Focus(); // A Window-ra irányítjuk a fókuszt
                 }
             }
         }
@@ -125,6 +131,7 @@ namespace VadaszDenes
                     };
                     button.Background = Brushes.Black;
                     button.Foreground = Brushes.White;
+                    button.Focusable = false; // Ne tudják a gombok ellopni a fókuszt a Window elől
                     jatekter[i, j] = button;
                 }
             }
@@ -138,19 +145,19 @@ namespace VadaszDenes
             string[] sorok = File.ReadAllLines(filePath);
             for (int i = 0; i < terkep.GetLength(0); i++)
             {
+                string[] adatok = sorok[i].Split(',');
                 for (int j = 0; j < terkep.GetLength(1); j++)
                 {
-                    terkep[i, j] = sorok[i].Split(',')[j];
+                    terkep[i, j] = adatok[j];
+
+                    // Itt keressük meg a rovert (S = Start/Source)
+                    if (terkep[i, j] == "S")
+                    {
+                        roverX = i; // Eltároljuk a sor indexét
+                        roverY = j; // Eltároljuk az oszlop indexét
+                    }
                 }
             }
-
-            //for (int i = 0; i < terkep.GetLength(0); i++)
-            //{
-            //    for (int j = 0; j < terkep.GetLength(1); j++)
-            //    {
-            //        terkep[i, j] = "A";
-            //    }
-            //}
         }
 
         private void ScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -206,6 +213,89 @@ namespace VadaszDenes
             // 4. Move the ScrollViewer (instance calls)
             sv.ScrollToHorizontalOffset(nextX);
             sv.ScrollToVerticalOffset(nextY);
+        }
+
+        private void MainWindow_KeyDown(object sender, KeyEventArgs e)
+        {
+            switch (e.Key)
+            {
+                case Key.W: case Key.Up: RoverMozgatas(-1, 0); break;
+                case Key.S: case Key.Down: RoverMozgatas(1, 0); break;
+                case Key.A: case Key.Left: RoverMozgatas(0, -1); break;
+                case Key.D: case Key.Right: RoverMozgatas(0, 1); break;
+            }
+        }
+
+        private void RoverMozgatas(int eltolasX, int eltolasY)
+        {
+            // Figyelem: A tömbnél az első index [sor], a második a [oszlop]
+            // A kódodban az 'X' általában a sort (függőleges), az 'Y' az oszlopot (vízszintes) jelenti
+            int ujX = roverX + eltolasX;
+            int ujY = roverY + eltolasY;
+
+            if (ujX >= 0 && ujX < terkep.GetLength(0) && ujY >= 0 && ujY < terkep.GetLength(1))
+            {
+                if (terkep[ujX, ujY] == ".")
+                {
+                    // 1. Régi pozíció frissítése (üres lesz)
+                    terkep[roverX, roverY] = ".";
+                    FrissitsEgyCellat(roverX, roverY);
+
+                    // 2. Koordináták léptetése
+                    roverX = ujX;
+                    roverY = ujY;
+
+                    // 3. Új pozíció frissítése (rover kerül oda)
+                    terkep[roverX, roverY] = "S";
+                    FrissitsEgyCellat(roverX, roverY);
+
+                    // 4. A kamera célpontjának frissítése az ÚJ gombra
+                    target = jatekter[roverX, roverY];
+                }
+            }
+        }
+
+        // Ez a függvény CSAK EGY gomb tartalmát cseréli le, nem az egész pályát
+        private void FrissitsEgyCellat(int sor, int oszlop)
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            var layer = new Grid();
+
+            // Alapkőzet (Mars)
+            string marsPath = System.IO.Path.Combine(baseDir, "Assetts", "mars.png");
+            layer.Children.Add(new Image
+            {
+                Source = new BitmapImage(new Uri(marsPath)),
+                Stretch = Stretch.Fill
+            });
+
+            // Mi van ott most? - Hagyományos switch blokk használata
+            string symbol = terkep[sor, oszlop];
+            string overlayName = null;
+
+            switch (symbol)
+            {
+                case "#": overlayName = "akadaly.png"; break;
+                case "B": overlayName = "kek_asvany.png"; break;
+                case "Y": overlayName = "sarga_asvany.png"; break;
+                case "G": overlayName = "zold_asvany.png"; break;
+                case "S": overlayName = "rover.png"; break;
+                default: overlayName = null; break;
+            }
+
+            if (overlayName != null)
+            {
+                string path = System.IO.Path.Combine(baseDir, "Assetts", overlayName);
+                layer.Children.Add(new Image
+                {
+                    Source = new BitmapImage(new Uri(path)),
+                    Stretch = Stretch.Fill,
+                    IsHitTestVisible = false
+                });
+            }
+
+            // A gomb tartalmának frissítése
+            jatekter[sor, oszlop].Content = layer;
         }
     }
 }
