@@ -241,15 +241,16 @@ namespace VadaszDenes
             {
                 if (terkep[ujX, ujY] == ".")
                 {
-                    // If moving left, change rover image to left-facing sprite; otherwise default
+                    // Only change facing when moving horizontally:
                     if (eltolasY == -1)
                     {
                         roverImageName = "rover_left.png";
                     }
-                    else
+                    else if (eltolasY == 1)
                     {
                         roverImageName = "rover.png";
                     }
+                    // If eltolasY == 0 (vertical movement), do not change roverImageName
 
                     // 1. Régi pozíció frissítése (üres lesz)
                     terkep[roverX, roverY] = ".";
