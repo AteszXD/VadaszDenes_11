@@ -89,9 +89,9 @@
     <None Include="Assetts\mars_alap.bak">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="Assetts\mars_map_50x50.csv">
+    <EmbeddedResource Include="Assetts\mars_map_50x50.csv">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
+    </EmbeddedResource>
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
@@ -101,24 +101,24 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Assetts\akadaly.png">
+    <EmbeddedResource Include="Assetts\akadaly.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Assetts\kek_asvany.png">
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assetts\kek_asvany.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Assetts\mars.png">
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assetts\mars.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Assetts\rover.png">
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assetts\rover.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Assetts\sarga_asvany.png">
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assetts\sarga_asvany.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="Assetts\zold_asvany.png">
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assetts\zold_asvany.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
+    </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

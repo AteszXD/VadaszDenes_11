@@ -37,65 +37,83 @@ namespace Bemutato
 
         private void JatekterMegjelenites()
         {
+            // Plan (pseudocode):
+            // 1. Precompute base directory
+            // 2. For each cell:
+            //    a. Add the button to the grid
+            //    b. Create a Grid container for layered images
+            //    c. Always create and add the base Image (mars.png)
+            //    d. If the map symbol is not ".", create an overlay Image with the corresponding transparent PNG and add it on top
+            //    e. If the symbol is "S", also mark the button as the camera target
+            //    f. Set the button.Content to the composed Grid
+            //
+            // This ensures mars.png is always rendered and everything else is drawn over it (transparent PNG overlays).
+
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+
             for (int i = 0; i < terkep.GetLength(0); i++)
             {
                 for (int j = 0; j < terkep.GetLength(1); j++)
                 {
+                    // Add the button to the parent grid
                     grdJatekter.Children.Add(jatekter[i, j]);
-                    string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                    string filePath;
-                    switch (jatekter[i,j].Content)
+
+                    // Create a container to layer images (base + optional overlay)
+                    var layer = new Grid();
+
+                    // Base image: always mars.png
+                    string baseMarsPath = System.IO.Path.Combine(baseDir, "Assetts", "mars.png");
+                    var baseImage = new Image()
                     {
-                        case ".":
-                            filePath = System.IO.Path.Combine(baseDir, "Assetts", "mars.png");
-                            jatekter[i, j].Content = new Image()
-                            {
-                                Source = new BitmapImage(new Uri(filePath)),
-                                Stretch = Stretch.Fill
-                            };
-                            break;
+                        Source = new BitmapImage(new Uri(baseMarsPath)),
+                        Stretch = Stretch.Fill
+                    };
+                    layer.Children.Add(baseImage);
+
+                    // Determine overlay based on the original content (the map symbol)
+                    string symbol = terkep[i, j]; // use the map data rather than previous Content
+                    string overlayPath = null;
+
+                    switch (symbol)
+                    {
                         case "#":
-                            filePath = System.IO.Path.Combine(baseDir, "Assetts", "akadaly.png");
-                            jatekter[i, j].Content = new Image()
-                            {
-                                Source = new BitmapImage(new Uri(filePath)),
-                                Stretch = Stretch.Fill
-                            };
+                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", "akadaly.png");
                             break;
                         case "B":
-                            filePath = System.IO.Path.Combine(baseDir, "Assetts", "kek_asvany.png");
-                            jatekter[i, j].Content = new Image()
-                            {
-                                Source = new BitmapImage(new Uri(filePath)),
-                                Stretch = Stretch.Fill
-                            };
+                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", "kek_asvany.png");
                             break;
                         case "Y":
-                            filePath = System.IO.Path.Combine(baseDir, "Assetts", "sarga_asvany.png");
-                            jatekter[i, j].Content = new Image()
-                            {
-                                Source = new BitmapImage(new Uri(filePath)),
-                                Stretch = Stretch.Fill
-                            };
+                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", "sarga_asvany.png");
                             break;
                         case "G":
-                            filePath = System.IO.Path.Combine(baseDir, "Assetts", "zold_asvany.png");
-                            jatekter[i, j].Content = new Image()
-                            {
-                                Source = new BitmapImage(new Uri(filePath)),
-                                Stretch = Stretch.Fill
-                            };
+                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", "zold_asvany.png");
                             break;
                         case "S":
-                            filePath = System.IO.Path.Combine(baseDir, "Assetts", "rover.png");
-                            jatekter[i, j].Content = new Image()
-                            {
-                                Source = new BitmapImage(new Uri(filePath)),
-                                Stretch = Stretch.Fill
-                            };
-                            target = jatekter[i, j];
+                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", "rover.png");
                             break;
+                            // case "." -> no overlay (only mars visible)
                     }
+
+                    if (!string.IsNullOrEmpty(overlayPath))
+                    {
+                        var overlayImage = new Image()
+                        {
+                            Source = new BitmapImage(new Uri(overlayPath)),
+                            Stretch = Stretch.Fill
+                        };
+                        // Make sure overlays don't block click events on the button if needed
+                        overlayImage.IsHitTestVisible = false;
+                        layer.Children.Add(overlayImage);
+
+                        if (symbol == "S")
+                        {
+                            // Keep target as the Button so camera logic still finds the button position
+                            target = jatekter[i, j];
+                        }
+                    }
+
+                    // Assign the layered Grid as the button's content
+                    jatekter[i, j].Content = layer;
                 }
             }
         }
@@ -171,22 +189,33 @@ namespace Bemutato
         {
             if (target == null) return;
 
-            // 1. Célpont pozíciója a Griden (zoommal korrigálva)
+            // Try to locate the ScrollViewer instance defined in XAML (handles different naming)
+            var sv = this.FindName("ScrollViewer") as ScrollViewer ?? this.FindName("scrollViewer") as ScrollViewer;
+            if (sv == null) return; // cannot proceed without the ScrollViewer instance
+            if (st == null) return; // ensure the ScaleTransform exists
+
+            // 1. Target position on the grid
             Point targetPos = target.TransformToAncestor(grdJatekter).Transform(new Point(0, 0));
-            double destX = (targetPos.X + target.ActualWidth / 2) * st.ScaleX - (ScrollViewer.ActualWidth / 2);
-            double destY = (targetPos.Y + target.ActualHeight / 2) * st.ScaleY - (ScrollViewer.ActualHeight / 2);
 
-            // 2. Jelenlegi pozíció
-            double currentX = ScrollViewer.HorizontalOffset;
-            double currentY = ScrollViewer.VerticalOffset;
+            // Use RenderSize to get actual dimensions from the instance (avoids static-access ambiguity)
+            double targetCenterX = targetPos.X + target.RenderSize.Width / 2.0;
+            double targetCenterY = targetPos.Y + target.RenderSize.Height / 2.0;
 
-            // 3. Sima átmenet (Lerp formula: current + (target - current) * smoothness)
+            // Apply current scale and center the view on the target
+            double destX = targetCenterX * st.ScaleX - (sv.ActualWidth / 2.0);
+            double destY = targetCenterY * st.ScaleY - (sv.ActualHeight / 2.0);
+
+            // 2. Current position from the ScrollViewer instance
+            double currentX = sv.HorizontalOffset;
+            double currentY = sv.VerticalOffset;
+
+            // 3. Smooth interpolation
             double nextX = currentX + (destX - currentX) * smoothness;
             double nextY = currentY + (destY - currentY) * smoothness;
 
-            // 4. Mozgatás
-            ScrollViewer.ScrollToHorizontalOffset(nextX);
-            ScrollViewer.ScrollToVerticalOffset(nextY);
+            // 4. Move the ScrollViewer (instance calls)
+            sv.ScrollToHorizontalOffset(nextX);
+            sv.ScrollToVerticalOffset(nextY);
         }
     }
 }
