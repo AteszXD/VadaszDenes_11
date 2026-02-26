@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace Bemutato.Properties
+namespace VadaszDenes.Properties
 {
 
 
