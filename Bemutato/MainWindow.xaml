@@ -8,9 +8,10 @@
         Title="Super Minecraft Wall-E in Astroneer 2 Ultra: Deluxe Edition + New Funky Mode" Height="450" Width="800">
 
     <!-- Hozzáadva a PreviewMouseWheel esemény -->
-    <ScrollViewer HorizontalScrollBarVisibility="Auto" 
-                  VerticalScrollBarVisibility="Auto"
-                  PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+    <ScrollViewer x:Name="scrollViewer" 
+              HorizontalScrollBarVisibility="Auto" 
+              VerticalScrollBarVisibility="Auto"
+              PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
 
         <Grid x:Name="grdJatekter" Background="Black" Width="10000" Height="10000">
             <Grid.LayoutTransform>

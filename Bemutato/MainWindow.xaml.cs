@@ -33,22 +33,12 @@ namespace VadaszDenes
             InitializeComponent();
             JatekterGeneralas();
             JatekterMegjelenites();
+
+            CompositionTarget.Rendering += UpdateCamera;
         }
 
         private void JatekterMegjelenites()
         {
-            // Plan (pseudocode):
-            // 1. Precompute base directory
-            // 2. For each cell:
-            //    a. Add the button to the grid
-            //    b. Create a Grid container for layered images
-            //    c. Always create and add the base Image (mars.png)
-            //    d. If the map symbol is not ".", create an overlay Image with the corresponding transparent PNG and add it on top
-            //    e. If the symbol is "S", also mark the button as the camera target
-            //    f. Set the button.Content to the composed Grid
-            //
-            // This ensures mars.png is always rendered and everything else is drawn over it (transparent PNG overlays).
-
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
 
             for (int i = 0; i < terkep.GetLength(0); i++)
