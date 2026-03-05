@@ -7,24 +7,50 @@
         mc:Ignorable="d"
         Title="Super Minecraft Wall-E in Astroneer 2 Ultra: Deluxe Edition + New Funky Mode" Height="450" Width="800">
 
-    <!-- Hozzáadva a PreviewMouseWheel esemény -->
-    <ScrollViewer x:Name="scrollViewer" 
-              HorizontalScrollBarVisibility="Auto" 
-              VerticalScrollBarVisibility="Auto"
-              PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+    <DockPanel LastChildFill="True">
+        <!-- Bottom status / control panel -->
+        <Border DockPanel.Dock="Bottom" Background="#222" Padding="8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-        <Grid x:Name="grdJatekter" Background="Black" Width="10000" Height="10000">
-            <Grid.LayoutTransform>
-                <!-- Ez a transform felel a skálázásért -->
-                <ScaleTransform x:Name="st" ScaleX="1" ScaleY="1" />
-            </Grid.LayoutTransform>
+                <!-- Left: optional title or left aligned info -->
+                <TextBlock Text="Rover Status" Foreground="White" FontWeight="Bold" VerticalAlignment="Center" Grid.Column="0" />
 
-            <!-- Csak teszt jelleggel egy szöveg, hogy lásd a zoomot -->
-            <TextBlock Text="Játéktér" Foreground="White" FontSize="50" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            <Button x:Name="btnRover" Width="100" Height="100" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Hidden">
-                <Image Source="rover.png"/>
-            </Button>
-        </Grid>
-    </ScrollViewer>
+                <!-- Centered sleek horizontal row of controls -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,0,0,0">
+                    <TextBlock x:Name="lblBattery" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="lblTime" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="lblPosition" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="lblSteps" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="lblMinerals" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <Button x:Name="btnMine" Content="Mine (M / Space)" Click="BtnMine_Click" Height="28" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="lblStatus" Foreground="LightGreen" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main scrollable play area (fills remaining space) -->
+        <ScrollViewer x:Name="scrollViewer"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+            <Grid x:Name="grdJatekter" Background="Black" Width="10000" Height="10000">
+                <Grid.LayoutTransform>
+                    <!-- Ez a transform felel a skálázásért -->
+                    <ScaleTransform x:Name="st" ScaleX="1" ScaleY="1" />
+                </Grid.LayoutTransform>
+
+                <!-- Csak teszt jelleggel egy szöveg, hogy lásd a zoomot -->
+                <TextBlock Text="Játéktér" Foreground="White" FontSize="50" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Button x:Name="btnRover" Width="100" Height="100" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Hidden">
+                    <Image Source="/Assetts/rover.png"/>
+                </Button>
+            </Grid>
+        </ScrollViewer>
+    </DockPanel>
 
 </Window>

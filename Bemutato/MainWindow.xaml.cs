@@ -13,6 +13,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using Bemutato.Assetts;
 
 namespace VadaszDenes
 {
@@ -27,6 +28,8 @@ namespace VadaszDenes
         private int roverX;
         private int roverY;
 
+        private Rover rover; // rover logic (battery, time, stats)
+
         private FrameworkElement target; // Ezt a gombot/képet követjük
         private double smoothness = 0.1; // 0.0 és 1.0 között (kisebb = simább/lassabb)
 
@@ -36,12 +39,21 @@ namespace VadaszDenes
         public MainWindow()
         {
             BetoltTerkep();
+
+            // Initialize Rover logic and sync starting position from the loaded map
+            rover = new Rover();
+            rover.Reset(roverX, roverY);
+
             InitializeComponent();
             JatekterGeneralas();
             JatekterMegjelenites();
 
             this.KeyDown += MainWindow_KeyDown;
             CompositionTarget.Rendering += UpdateCamera;
+
+            // Initial UI sync
+            UpdateStatusUI();
+            lblStatus.Text = "Ready.";
         }
 
         private void JatekterMegjelenites()
@@ -227,6 +239,10 @@ namespace VadaszDenes
                 case Key.S: case Key.Down: RoverMozgatas(1, 0); break;
                 case Key.A: case Key.Left: RoverMozgatas(0, -1); break;
                 case Key.D: case Key.Right: RoverMozgatas(0, 1); break;
+                case Key.M:
+                case Key.Space:
+                    MineAtCurrentPosition();
+                    break;
             }
         }
 
@@ -241,7 +257,7 @@ namespace VadaszDenes
             {
                 if (terkep[ujX, ujY] == ".")
                 {
-                    // Only change facing when moving horizontally:
+                    // Decide facing sprite change only for horizontal movement:
                     if (eltolasY == -1)
                     {
                         roverImageName = "rover_left.png";
@@ -250,22 +266,39 @@ namespace VadaszDenes
                     {
                         roverImageName = "rover.png";
                     }
-                    // If eltolasY == 0 (vertical movement), do not change roverImageName
 
-                    // 1. Régi pozíció frissítése (üres lesz)
+                    // Ask the rover logic to perform movement. Use Slow to preserve one-block-per-key press.
+                    int stepsMoved;
+                    string message;
+                    bool moved = rover.TryMove(eltolasX, eltolasY, Rover.Speed.Slow, out stepsMoved, out message);
+
+                    if (!moved)
+                    {
+                        // Show status/feedback (quick debug) — you can replace with a proper UI element later
+                        this.Title = message;
+                        lblStatus.Text = message;
+                        UpdateStatusUI();
+                        return;
+                    }
+
+                    // At this point rover.X and rover.Y have been updated by the Rover class.
+                    // Update the map: clear old, set new.
                     terkep[roverX, roverY] = ".";
                     FrissitsEgyCellat(roverX, roverY);
 
-                    // 2. Koordináták léptetése
-                    roverX = ujX;
-                    roverY = ujY;
+                    // Save previous coords then update roverX/roverY to match Rover
+                    roverX = rover.X;
+                    roverY = rover.Y;
 
-                    // 3. Új pozíció frissítése (rover kerül oda)
                     terkep[roverX, roverY] = "S";
                     FrissitsEgyCellat(roverX, roverY);
 
-                    // 4. A kamera célpontjának frissítése az ÚJ gombra
+                    // Update camera target
                     target = jatekter[roverX, roverY];
+
+                    // Update title with rover status for feedback (battery/time/stats)
+                    this.Title = rover.GetStatus();
+                    UpdateStatusUI();
                 }
             }
         }
@@ -314,6 +347,51 @@ namespace VadaszDenes
 
             // A gomb tartalmának frissítése
             jatekter[sor, oszlop].Content = layer;
+        }
+
+        // UI helper: update right-side status panel
+        private void UpdateStatusUI()
+        {
+            if (lblBattery != null) lblBattery.Text = $"Battery: {rover.Battery}/100";
+            if (lblTime != null) lblTime.Text = $"Time: HalfHour={rover.HalfHourTick} ({(rover.IsDay ? "Day" : "Night")})";
+            if (lblPosition != null) lblPosition.Text = $"Pos: {rover.X},{rover.Y}";
+            if (lblSteps != null) lblSteps.Text = $"Steps moved: {rover.StepsMoved}";
+            if (lblMinerals != null) lblMinerals.Text = $"Minerals: {rover.MineralsMined}";
+        }
+
+        // Attempt to mine at the rover's current map cell.
+        private void MineAtCurrentPosition()
+        {
+            // Only allow mining if there's a mineral symbol under rover: B, Y, G
+            string symbol = terkep[roverX, roverY];
+            if (symbol != "B" && symbol != "Y" && symbol != "G")
+            {
+                lblStatus.Text = "No mineral here to mine.";
+                return;
+            }
+
+            string message;
+            bool success = rover.TryMine(out message);
+            lblStatus.Text = message;
+
+            if (success)
+            {
+                // Remove mineral from map and refresh the cell
+                terkep[roverX, roverY] = "S"; // rover stands on S
+                FrissitsEgyCellat(roverX, roverY);
+
+                UpdateStatusUI();
+            }
+            else
+            {
+                // failed due to battery/time etc. still update UI
+                UpdateStatusUI();
+            }
+        }
+
+        private void BtnMine_Click(object sender, RoutedEventArgs e)
+        {
+            MineAtCurrentPosition();
         }
     }
 }
