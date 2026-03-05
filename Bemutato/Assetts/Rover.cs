@@ -44,7 +44,41 @@ namespace Bemutato.Assetts
         }
 
         // Whether it's currently day (true) or night (false)
-        public bool IsDay => (HalfHourTick % CycleHalfHours) < DayHalfHours;
+        public bool IsDay
+        {
+            get
+            {
+                int t = HalfHourTick % CycleHalfHours; // 0..47 half-hour indices starting at 00:00
+                int dayStartIndex = 4 * 2; // 4:00 -> 8 half-hours
+                int dayEndIndex = dayStartIndex + DayHalfHours; // 8 + 32 = 40 -> 20:00
+                return t >= dayStartIndex && t < dayEndIndex;
+            }
+        }
+
+        // Returns the wrapped half-hour index within the 24h cycle (0..47)
+        public int HalfHourIndexOfDay => HalfHourTick % CycleHalfHours;
+
+        // Returns TimeSpan representing the time-of-day (wrapped to 24h).
+        public TimeSpan TimeOfDaySpan
+        {
+            get
+            {
+                int t = HalfHourIndexOfDay;
+                int hours = t / 2;
+                int minutes = (t % 2) * 30;
+                return new TimeSpan(hours, minutes, 0);
+            }
+        }
+
+        // Returns formatted time string "HH:mm" for UI display (loops after 23:30 -> 00:00)
+        public string TimeOfDayString
+        {
+            get
+            {
+                var ts = TimeOfDaySpan;
+                return $"{ts.Hours:D2}:{ts.Minutes:D2}";
+            }
+        }
 
         // Try to move in the direction (dx,dy). dx and dy are interpreted per-step direction components.
         // Allowed to move diagonally. Each call performs one half-hour of activity and attempts up to 'speed' steps.
@@ -160,11 +194,11 @@ namespace Bemutato.Assetts
             if (Battery > BatteryCapacity) Battery = BatteryCapacity;
         }
 
-        // Utility: returns a human-readable state snapshot
-        public string GetStatus()
-        {
-            return $"Pos=({X},{Y}) Battery={Battery}/100 TimeHalfHour={HalfHourTick} ({(IsDay ? "Day" : "Night")}) StepsMoved={StepsMoved} Minerals={MineralsMined}";
-        }
+        // Utility: returns a human-readable state snapshot (uses wrapped time for UI looping)
+        //public string GetStatus()
+        //{
+        //    return $"Pos=({X},{Y}) Battery={Battery}/100 Time={TimeOfDayString} ({(IsDay ? "Day" : "Night")}) StepsMoved={StepsMoved} Minerals={MineralsMined}";
+        //}
 
         // Reset rover state (for tests)
         public void Reset(int startX = 0, int startY = 0, int startBattery = BatteryCapacity, int startTick = 0)

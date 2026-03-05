@@ -17,9 +17,6 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Left: optional title or left aligned info -->
-                <TextBlock Text="Rover Status" Foreground="White" FontWeight="Bold" VerticalAlignment="Center" Grid.Column="0" />
-
                 <!-- Centered sleek horizontal row of controls -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,0,0,0">
                     <TextBlock x:Name="lblBattery" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
@@ -27,8 +24,6 @@
                     <TextBlock x:Name="lblPosition" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
                     <TextBlock x:Name="lblSteps" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
                     <TextBlock x:Name="lblMinerals" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                    <Button x:Name="btnMine" Content="Mine (M / Space)" Click="BtnMine_Click" Height="28" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="lblStatus" Foreground="LightGreen" VerticalAlignment="Center" TextWrapping="Wrap"/>
                 </StackPanel>
             </Grid>
         </Border>

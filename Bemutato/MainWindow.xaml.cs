@@ -53,7 +53,7 @@ namespace VadaszDenes
 
             // Initial UI sync
             UpdateStatusUI();
-            lblStatus.Text = "Ready.";
+            // lblStatus.Text = "Ready.";
         }
 
         private void JatekterMegjelenites()
@@ -276,7 +276,7 @@ namespace VadaszDenes
                     {
                         // Show status/feedback (quick debug) — you can replace with a proper UI element later
                         this.Title = message;
-                        lblStatus.Text = message;
+                        // lblStatus.Text = message;
                         UpdateStatusUI();
                         return;
                     }
@@ -297,7 +297,7 @@ namespace VadaszDenes
                     target = jatekter[roverX, roverY];
 
                     // Update title with rover status for feedback (battery/time/stats)
-                    this.Title = rover.GetStatus();
+                    // this.Title = rover.GetStatus();
                     UpdateStatusUI();
                 }
             }
@@ -349,14 +349,23 @@ namespace VadaszDenes
             jatekter[sor, oszlop].Content = layer;
         }
 
-        // UI helper: update right-side status panel
+        // UI helper: update status panel
         private void UpdateStatusUI()
         {
-            if (lblBattery != null) lblBattery.Text = $"Battery: {rover.Battery}/100";
-            if (lblTime != null) lblTime.Text = $"Time: HalfHour={rover.HalfHourTick} ({(rover.IsDay ? "Day" : "Night")})";
-            if (lblPosition != null) lblPosition.Text = $"Pos: {rover.X},{rover.Y}";
-            if (lblSteps != null) lblSteps.Text = $"Steps moved: {rover.StepsMoved}";
-            if (lblMinerals != null) lblMinerals.Text = $"Minerals: {rover.MineralsMined}";
+            if (lblBattery != null) lblBattery.Text = $"Akkumulátor: {rover.Battery}/100";
+
+            // Use rover.TimeOfDayString which wraps time into a 24-hour loop.
+            // Also include the half-hour index within the day-cycle and day/night indicator.
+            if (lblTime != null)
+            {
+                string timeString = rover.TimeOfDayString ?? $"{rover.HalfHourTick / 2}:{(rover.HalfHourTick % 2 * 30).ToString("D2")}";
+                string cycleInfo = string.Empty;
+                lblTime.Text = $"Idő: {timeString} ({(rover.IsDay ? "Nappal" : "Éjszaka")})";
+            }
+
+            if (lblPosition != null) lblPosition.Text = $"Pozíció: {rover.X},{rover.Y}";
+            if (lblSteps != null) lblSteps.Text = $"Lépések: {rover.StepsMoved}";
+            if (lblMinerals != null) lblMinerals.Text = $"Kibányászott ásványok: {rover.MineralsMined}";
         }
 
         // Attempt to mine at the rover's current map cell.
@@ -366,13 +375,13 @@ namespace VadaszDenes
             string symbol = terkep[roverX, roverY];
             if (symbol != "B" && symbol != "Y" && symbol != "G")
             {
-                lblStatus.Text = "No mineral here to mine.";
+                // lblStatus.Text = "No mineral here to mine.";
                 return;
             }
 
             string message;
             bool success = rover.TryMine(out message);
-            lblStatus.Text = message;
+            // lblStatus.Text = message;
 
             if (success)
             {
