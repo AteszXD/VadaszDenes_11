@@ -233,7 +233,7 @@ namespace VadaszDenes
             sv.ScrollToVerticalOffset(nextY);
         }
 
-        private void MainWindow_KeyDown(object sender, KeyEventArgs e)
+        private async void MainWindow_KeyDown(object sender, KeyEventArgs e)
         {
             switch (e.Key)
             {
@@ -242,7 +242,8 @@ namespace VadaszDenes
                 case Key.A: case Key.Left: RoverMozgatas(0, -1); break;
                 case Key.D: case Key.Right: RoverMozgatas(0, 1); break;
                 case Key.Space:
-                    CollectAllMinerals();
+                    MessageBox.Show("SPACE pressed");
+                    await CollectAllMineralsAsync();
                     break;
             }
         }
@@ -404,122 +405,155 @@ namespace VadaszDenes
             MineAtCurrentPosition();
         }
 
-        private async void CollectAllMinerals()
-        {
-            while (true)
-            {
-                var nextMineral = FindClosestMineral();
-                if (nextMineral == null)
-                {
-                    LogList.Items.Add("Minden ásvány begyűjtve vagy nem elérhető.");
-                    break;
-                }
-
-                bool reached = await PathfindToAsync(nextMineral.Value.x, nextMineral.Value.y);
-
-                if (!reached)
-                {
-                    LogList.Items.Add("Nem tudtunk eljutni az ásványhoz akkumulátor miatt.");
-                    break;
-                }
-            }
-        }
-
-        private (int x, int y)? FindClosestMineral()
-        {
-            int minDist = int.MaxValue;
-            (int x, int y)? closest = null;
-
-            for (int i = 0; i < terkep.GetLength(0); i++)
-            {
-                for (int j = 0; j < terkep.GetLength(1); j++)
-                {
-                    string cell = terkep[i, j];
-                    if (cell == "B" || cell == "Y" || cell == "G")
-                    {
-                        int dist = Math.Abs(roverX - i) + Math.Abs(roverY - j);
-                        if (dist < minDist)
-                        {
-                            minDist = dist;
-                            closest = (i, j);
-                        }
-                    }
-                }
-            }
-
-            return closest;
-        }
-
         private async Task<bool> PathfindToAsync(int targetX, int targetY)
         {
-            while (roverX != targetX || roverY != targetY)
+            var path = FindPath(roverX, roverY, targetX, targetY);
+            if (path == null)
             {
-                int dx = targetX - roverX;
-                int dy = targetY - roverY;
+                LogList.Items.Add($"Nincs elérhető útvonal ({targetX},{targetY})!");
+                LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
+                return false;
+            }
 
-                int stepX = Math.Sign(dx);
-                int stepY = Math.Sign(dy);
+            // Első elem a jelenlegi pozíció, azt hagyjuk ki
+            foreach (var step in path.Skip(1))
+            {
+                int dx = step.X - roverX;
+                int dy = step.Y - roverY;
 
-                // Válasszuk a lépést: először átlós, ha lehet
-                int moveX = stepX != 0 ? stepX : 0;
-                int moveY = stepY != 0 ? stepY : 0;
-
-                // Ellenőrizzük, hogy a célmező átjárható-e
-                int newX = roverX + moveX;
-                int newY = roverY + moveY;
-
-                if (newX < 0 || newX >= terkep.GetLength(0) || newY < 0 || newY >= terkep.GetLength(1))
-                    return false; // kint a térképről
-
-                string cell = terkep[newX, newY];
-                if (cell == "#")
-                    return false; // akadály
-
-                // Számoljuk a szükséges energiát lassú, normál vagy gyors lépéshez
-                Rover.Speed chosenSpeed = Rover.Speed.Normal;
-
-                // Ellenőrizzük, hogy a választott sebességgel ne merüljön le
-                int requiredEnergy = 2 * (int)chosenSpeed * (int)chosenSpeed;
+                Rover.Speed speed = Rover.Speed.Normal;
+                int v = (int)speed;
+                int requiredEnergy = 2 * v * v;
                 int batteryAfterMove = rover.Battery - requiredEnergy + (rover.IsDay ? 10 : 0);
 
-                if (batteryAfterMove <= 0)
+                if (batteryAfterMove < 0)
                 {
-                    // Akkor vár egy félórát (standby) és töltődik nappal
                     rover.WaitOneHalfHour(out string msgWait);
                     LogList.Items.Add(msgWait);
                     UpdateStatusUI();
-                    await Task.Delay(100); // UI frissítés
+                    await Task.Delay(50);
                     continue;
                 }
 
-                // Mozgatás
-                RoverMozgatas(moveX, moveY);
+                RoverMozgatas(dx, dy);
                 UpdateStatusUI();
-                await Task.Delay(100); // fél órát szimulálunk rövid delay-vel a UI-nak
-            }
+                await Task.Delay(50);
 
-            // Ha a rover az ásványon áll, vegye fel
-            string finalCell = terkep[roverX, roverY];
-            if (finalCell == "B" || finalCell == "Y" || finalCell == "G")
-            {
-                if (rover.TryMine(out string msgMine))
+                // Ásvány felszedése az aktuális mezőn
+                string currentCell = terkep[roverX, roverY];
+                if (currentCell == "B" || currentCell == "Y" || currentCell == "G")
                 {
                     terkep[roverX, roverY] = ".";
                     FrissitsEgyCellat(roverX, roverY);
 
-                    LogList.Items.Add($"Mineral collected at ({roverX},{roverY}): {msgMine}");
-                    LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
-
-                    MineralText.Text = rover.MineralsMined.ToString();
-                    UpdateStatusUI();
-                }
-                else
-                {
-                    LogList.Items.Add($"Nem tudott bányászni ({roverX},{roverY}): {msgMine}");
+                    if (rover.TryMine(out string msgMine))
+                    {
+                        LogList.Items.Add($"Felszedett ásvány ({roverX},{roverY}): {msgMine}");
+                        LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
+                        UpdateStatusUI();
+                    }
                 }
             }
 
             return true;
+        }
+
+        private async Task CollectAllMineralsAsync()
+        {
+            // 1️⃣ Készítsünk listát az összes ásványról
+            List<(int X, int Y)> minerals = new List<(int X, int Y)>();
+            for (int i = 0; i < 50; i++)
+            {
+                for (int j = 0; j < 50; j++)
+                {
+                    if (terkep[i, j] == "B" || terkep[i, j] == "Y" || terkep[i, j] == "G")
+                    {
+                        minerals.Add((i, j));
+                    }
+                }
+            }
+
+            // 2️⃣ Amíg van ásvány a listában
+            while (minerals.Count > 0)
+            {
+                // 2a️⃣ Legközelebbi ásvány kiválasztása (Manhattan távolság)
+                var nextTarget = minerals.OrderBy(m => Math.Abs(m.X - roverX) + Math.Abs(m.Y - roverY)).First();
+
+                // 2b️⃣ Pathfinding a célhoz
+                await PathfindToAsync(nextTarget.X, nextTarget.Y);
+
+                // 2c️⃣ Felszedett ásvány eltávolítása a listából
+                minerals.RemoveAll(m => m.X == roverX && m.Y == roverY);
+
+                // Rövid delay, hogy UI frissüljön
+                await Task.Delay(50);
+            }
+
+            LogList.Items.Add("Minden elérhető ásványt felszedett a rover!");
+            LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
+        }
+
+        private List<(int X, int Y)> FindPath(int startX, int startY, int goalX, int goalY)
+        {
+            var open = new List<Node>();
+            var closed = new HashSet<(int, int)>();
+
+            open.Add(new Node(startX, startY));
+
+            while (open.Count > 0)
+            {
+                // A legkisebb F-értékű csomópont kiválasztása
+                var current = open.OrderBy(n => n.F).First();
+                open.Remove(current);
+                closed.Add((current.X, current.Y));
+
+                // Ha célhoz értünk, építsük vissza az utat
+                if (current.X == goalX && current.Y == goalY)
+                {
+                    var path = new List<(int, int)>();
+                    var node = current;
+                    while (node != null)
+                    {
+                        path.Add((node.X, node.Y));
+                        node = node.Parent;
+                    }
+                    path.Reverse();
+                    return path;
+                }
+
+                // Szomszédok: 8 irány (diagonális is)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        if (dx == 0 && dy == 0) continue;
+
+                        int nx = current.X + dx;
+                        int ny = current.Y + dy;
+
+                        // Határok ellenőrzése
+                        if (nx < 0 || nx >= 50 || ny < 0 || ny >= 50) continue;
+
+                        // Akadályok kizárása
+                        if (terkep[nx, ny] == "#") continue;
+
+                        if (closed.Contains((nx, ny))) continue;
+
+                        int gCost = current.G + 1;
+                        int hCost = Math.Abs(goalX - nx) + Math.Abs(goalY - ny); // Manhattan távolság
+                        var neighbor = new Node(nx, ny, current) { G = gCost, H = hCost };
+
+                        // Ha van már jobb út a nyitott listában, ne adjuk hozzá
+                        var existing = open.FirstOrDefault(n => n.X == nx && n.Y == ny);
+                        if (existing != null && existing.G <= neighbor.G) continue;
+
+                        open.Add(neighbor);
+                    }
+                }
+            }
+
+            // Nincs útvonal
+            return null;
         }
     }
 }

@@ -70,7 +70,9 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="models\Node.cs" />
     <Compile Include="models\Pathfinder.cs" />
+    <Compile Include="models\RoverEvent.cs" />
     <Compile Include="Properties\AssemblyInfo.cs">
       <SubType>Code</SubType>
     </Compile>
