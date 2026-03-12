@@ -5,10 +5,12 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:VadaszDenes"
         mc:Ignorable="d"
-        Title="Super Minecraft Wall-E in Astroneer 2 Ultra: Deluxe Edition + New Funky Mode" Height="450" Width="800">
+        Title="Super Minecraft Wall-E in Astroneer 2 Ultra: Deluxe Edition + New Funky Mode" 
+        Height="800" Width="1200">
 
     <DockPanel LastChildFill="True">
-        <!-- Bottom status / control panel -->
+
+        <!-- Alsó státuszpanel -->
         <Border DockPanel.Dock="Bottom" Background="#222" Padding="8">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -17,35 +19,46 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Centered sleek horizontal row of controls -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,0,0,0">
-                    <TextBlock x:Name="lblBattery" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="lblTime" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="lblPosition" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="lblSteps" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="lblMinerals" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="lblBattery" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center" Text="Battery: 100%"/>
+                    <TextBlock x:Name="lblTime" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center" Text="Time: 0"/>
+                    <TextBlock x:Name="lblPosition" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center" Text="Pos: (0,0)"/>
+                    <TextBlock x:Name="lblSteps" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center" Text="Steps: 0"/>
+                    <TextBlock x:Name="lblMinerals" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center" Text="Minerals: 0"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Main scrollable play area (fills remaining space) -->
+        <!-- Jobboldali log + dashboard panel -->
+        <Border DockPanel.Dock="Right" Width="220" Background="#333" Padding="5">
+            <StackPanel>
+                <TextBlock Text="Minerals collected:" Foreground="White" FontWeight="Bold"/>
+                <TextBlock x:Name="MineralText" Text="0" Foreground="White" Margin="0,0,0,10"/>
+
+                <TextBlock Text="Event Log:" Foreground="White" FontWeight="Bold"/>
+                <ListBox x:Name="LogList" Height="600" Width="200"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Fő játékterület ScrollViewer-rel -->
         <ScrollViewer x:Name="scrollViewer"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
                       PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
             <Grid x:Name="grdJatekter" Background="Black" Width="10000" Height="10000">
                 <Grid.LayoutTransform>
-                    <!-- Ez a transform felel a skálázásért -->
                     <ScaleTransform x:Name="st" ScaleX="1" ScaleY="1" />
                 </Grid.LayoutTransform>
 
-                <!-- Csak teszt jelleggel egy szöveg, hogy lásd a zoomot -->
+                <!-- Teszt szöveg a zoomhoz -->
                 <TextBlock Text="Játéktér" Foreground="White" FontSize="50" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                <!-- Rejtett rover gomb, ha animálni akarod külön -->
                 <Button x:Name="btnRover" Width="100" Height="100" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Hidden">
                     <Image Source="/Assetts/rover.png"/>
                 </Button>
             </Grid>
         </ScrollViewer>
-    </DockPanel>
 
+    </DockPanel>
 </Window>

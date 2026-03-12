@@ -22,12 +22,13 @@ namespace VadaszDenes
     /// </summary>
     public partial class MainWindow : Window
     {
+        
         string[,] terkep = new string[50, 50];
         Button[,] jatekter = new Button[50, 50];
 
         private int roverX;
         private int roverY;
-
+        private SimplePathfinder pathfinder;
         private Rover rover; // rover logic (battery, time, stats)
 
         private FrameworkElement target; // Ezt a gombot/képet követjük
@@ -47,6 +48,7 @@ namespace VadaszDenes
             InitializeComponent();
             JatekterGeneralas();
             JatekterMegjelenites();
+            pathfinder = new SimplePathfinder(terkep);
 
             this.KeyDown += MainWindow_KeyDown;
             CompositionTarget.Rendering += UpdateCamera;
@@ -239,67 +241,66 @@ namespace VadaszDenes
                 case Key.S: case Key.Down: RoverMozgatas(1, 0); break;
                 case Key.A: case Key.Left: RoverMozgatas(0, -1); break;
                 case Key.D: case Key.Right: RoverMozgatas(0, 1); break;
-                case Key.M:
                 case Key.Space:
-                    MineAtCurrentPosition();
+                    CollectAllMinerals();
                     break;
             }
         }
 
         private void RoverMozgatas(int eltolasX, int eltolasY)
         {
-            // Figyelem: A tömbnél az első index [sor], a második a [oszlop]
-            // A kódodban az 'X' általában a sort (függőleges), az 'Y' az oszlopot (vízszintes) jelenti
             int ujX = roverX + eltolasX;
             int ujY = roverY + eltolasY;
 
             if (ujX >= 0 && ujX < terkep.GetLength(0) && ujY >= 0 && ujY < terkep.GetLength(1))
             {
-                if (terkep[ujX, ujY] == ".")
+                string cell = terkep[ujX, ujY];
+
+                // Ha ásvány van ott, próbáljuk meg felvenni
+                if (cell == "B" || cell == "Y" || cell == "G")
                 {
-                    // Decide facing sprite change only for horizontal movement:
-                    if (eltolasY == -1)
+                    if (rover.TryMine(out string msg))
                     {
-                        roverImageName = "rover_left.png";
+                        // Térképről eltüntetjük az ásványt
+                        terkep[ujX, ujY] = ".";
+                        FrissitsEgyCellat(ujX, ujY);
+
+                        // Event log frissítése
+                        LogList.Items.Add($"Mineral collected at ({ujX},{ujY}): {msg}");
+                        LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
+
+                        // Mineral számláló frissítése
+                        MineralText.Text = rover.MineralsMined.ToString();
                     }
-                    else if (eltolasY == 1)
+                    else
                     {
-                        roverImageName = "rover.png";
+                        // Ha nem sikerült bányászni (pl. kevés akkumulátor)
+                        LogList.Items.Add($"Could not mine at ({ujX},{ujY}): {msg}");
+                        LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
                     }
+                }
 
-                    // Ask the rover logic to perform movement. Use Slow to preserve one-block-per-key press.
-                    int stepsMoved;
-                    string message;
-                    bool moved = rover.TryMove(eltolasX, eltolasY, Rover.Speed.Slow, out stepsMoved, out message);
-
-                    if (!moved)
-                    {
-                        // Show status/feedback (quick debug) — you can replace with a proper UI element later
-                        this.Title = message;
-                        // lblStatus.Text = message;
-                        UpdateStatusUI();
-                        return;
-                    }
-
-                    // At this point rover.X and rover.Y have been updated by the Rover class.
-                    // Update the map: clear old, set new.
+                // Ha átjárható a mező, mozgatjuk a rovert
+                if (cell == ".")
+                {
+                    // Régi pozíció frissítése
                     terkep[roverX, roverY] = ".";
                     FrissitsEgyCellat(roverX, roverY);
 
-                    // Save previous coords then update roverX/roverY to match Rover
-                    roverX = rover.X;
-                    roverY = rover.Y;
+                    // Koordináták frissítése
+                    roverX = ujX;
+                    roverY = ujY;
 
+                    // Rover pozíció frissítése a térképen
                     terkep[roverX, roverY] = "S";
                     FrissitsEgyCellat(roverX, roverY);
 
-                    // Update camera target
+                    // A kamera célpontjának frissítése
                     target = jatekter[roverX, roverY];
-
-                    // Update title with rover status for feedback (battery/time/stats)
-                    // this.Title = rover.GetStatus();
-                    UpdateStatusUI();
                 }
+
+                // Frissítjük az alsó státuszpanelt
+                UpdateStatusUI();
             }
         }
 
@@ -401,6 +402,124 @@ namespace VadaszDenes
         private void BtnMine_Click(object sender, RoutedEventArgs e)
         {
             MineAtCurrentPosition();
+        }
+
+        private async void CollectAllMinerals()
+        {
+            while (true)
+            {
+                var nextMineral = FindClosestMineral();
+                if (nextMineral == null)
+                {
+                    LogList.Items.Add("Minden ásvány begyűjtve vagy nem elérhető.");
+                    break;
+                }
+
+                bool reached = await PathfindToAsync(nextMineral.Value.x, nextMineral.Value.y);
+
+                if (!reached)
+                {
+                    LogList.Items.Add("Nem tudtunk eljutni az ásványhoz akkumulátor miatt.");
+                    break;
+                }
+            }
+        }
+
+        private (int x, int y)? FindClosestMineral()
+        {
+            int minDist = int.MaxValue;
+            (int x, int y)? closest = null;
+
+            for (int i = 0; i < terkep.GetLength(0); i++)
+            {
+                for (int j = 0; j < terkep.GetLength(1); j++)
+                {
+                    string cell = terkep[i, j];
+                    if (cell == "B" || cell == "Y" || cell == "G")
+                    {
+                        int dist = Math.Abs(roverX - i) + Math.Abs(roverY - j);
+                        if (dist < minDist)
+                        {
+                            minDist = dist;
+                            closest = (i, j);
+                        }
+                    }
+                }
+            }
+
+            return closest;
+        }
+
+        private async Task<bool> PathfindToAsync(int targetX, int targetY)
+        {
+            while (roverX != targetX || roverY != targetY)
+            {
+                int dx = targetX - roverX;
+                int dy = targetY - roverY;
+
+                int stepX = Math.Sign(dx);
+                int stepY = Math.Sign(dy);
+
+                // Válasszuk a lépést: először átlós, ha lehet
+                int moveX = stepX != 0 ? stepX : 0;
+                int moveY = stepY != 0 ? stepY : 0;
+
+                // Ellenőrizzük, hogy a célmező átjárható-e
+                int newX = roverX + moveX;
+                int newY = roverY + moveY;
+
+                if (newX < 0 || newX >= terkep.GetLength(0) || newY < 0 || newY >= terkep.GetLength(1))
+                    return false; // kint a térképről
+
+                string cell = terkep[newX, newY];
+                if (cell == "#")
+                    return false; // akadály
+
+                // Számoljuk a szükséges energiát lassú, normál vagy gyors lépéshez
+                Rover.Speed chosenSpeed = Rover.Speed.Normal;
+
+                // Ellenőrizzük, hogy a választott sebességgel ne merüljön le
+                int requiredEnergy = 2 * (int)chosenSpeed * (int)chosenSpeed;
+                int batteryAfterMove = rover.Battery - requiredEnergy + (rover.IsDay ? 10 : 0);
+
+                if (batteryAfterMove <= 0)
+                {
+                    // Akkor vár egy félórát (standby) és töltődik nappal
+                    rover.WaitOneHalfHour(out string msgWait);
+                    LogList.Items.Add(msgWait);
+                    UpdateStatusUI();
+                    await Task.Delay(100); // UI frissítés
+                    continue;
+                }
+
+                // Mozgatás
+                RoverMozgatas(moveX, moveY);
+                UpdateStatusUI();
+                await Task.Delay(100); // fél órát szimulálunk rövid delay-vel a UI-nak
+            }
+
+            // Ha a rover az ásványon áll, vegye fel
+            string finalCell = terkep[roverX, roverY];
+            if (finalCell == "B" || finalCell == "Y" || finalCell == "G")
+            {
+                if (rover.TryMine(out string msgMine))
+                {
+                    terkep[roverX, roverY] = ".";
+                    FrissitsEgyCellat(roverX, roverY);
+
+                    LogList.Items.Add($"Mineral collected at ({roverX},{roverY}): {msgMine}");
+                    LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
+
+                    MineralText.Text = rover.MineralsMined.ToString();
+                    UpdateStatusUI();
+                }
+                else
+                {
+                    LogList.Items.Add($"Nem tudott bányászni ({roverX},{roverY}): {msgMine}");
+                }
+            }
+
+            return true;
         }
     }
 }
