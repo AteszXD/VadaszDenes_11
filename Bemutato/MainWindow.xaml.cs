@@ -32,10 +32,21 @@ namespace VadaszDenes
         private Rover rover; // rover logika (akkumulátor, idő, statisztikák)
 
         private FrameworkElement kovetettCel; // Ezt a gombot/képet követjük
-        private double simasag = 0.1; // 0.0 és 1.0 között (kisebb = simább/lassabb)
+        private double simasag = 0.05; // Még simább mozgás (0.05 = nagyon lassú követés)
 
         // Új: aktuális rover kép fájlnév (változhat balra mozgáskor)
         private string roverKepNev = "rover.png";
+
+        // Új: sebesség ikonok a megjelenítéshez
+        private Dictionary<Rover.Sebesseg, string> sebessegIkonok = new Dictionary<Rover.Sebesseg, string>
+        {
+            { Rover.Sebesseg.Lassu, "🐢" },
+            { Rover.Sebesseg.Normal, "🚶" },
+            { Rover.Sebesseg.Gyors, "⚡" }
+        };
+
+        // Animáció késleltetése (ms)
+        private const int ANIMACIOS_KESLELTETES = 200;
 
         public MainWindow()
         {
@@ -224,7 +235,7 @@ namespace VadaszDenes
             double aktualisX = sv.HorizontalOffset;
             double aktualisY = sv.VerticalOffset;
 
-            // 3. Sima interpoláció
+            // 3. Sima interpoláció (még lassabb követés)
             double kovetkezoX = aktualisX + (celX - aktualisX) * simasag;
             double kovetkezoY = aktualisY + (celY - aktualisY) * simasag;
 
@@ -237,72 +248,269 @@ namespace VadaszDenes
         {
             switch (e.Key)
             {
-                case Key.W: case Key.Up: RoverMozgatasa(-1, 0); break;
-                case Key.S: case Key.Down: RoverMozgatasa(1, 0); break;
-                case Key.A: case Key.Left: RoverMozgatasa(0, -1); break;
-                case Key.D: case Key.Right: RoverMozgatasa(0, 1); break;
+                case Key.W: case Key.Up: RoverMozgatasa(-1, 0, Rover.Sebesseg.Normal); break;
+                case Key.S: case Key.Down: RoverMozgatasa(1, 0, Rover.Sebesseg.Normal); break;
+                case Key.A: case Key.Left: RoverMozgatasa(0, -1, Rover.Sebesseg.Normal); break;
+                case Key.D: case Key.Right: RoverMozgatasa(0, 1, Rover.Sebesseg.Normal); break;
                 case Key.Space:
-                    MessageBox.Show("SPACE lenyomva");
                     await OsszesAsvanyGyujteseAsync();
+                    break;
+                // Sebességváltás teszteléshez (opcionális)
+                case Key.D1:
+                    rover.AktualisSebesseg = Rover.Sebesseg.Lassu;
+                    NaploLista.Items.Add($"{sebessegIkonok[Rover.Sebesseg.Lassu]} Sebesség: Lassú");
+                    AllapotFrissites();
+                    break;
+                case Key.D2:
+                    rover.AktualisSebesseg = Rover.Sebesseg.Normal;
+                    NaploLista.Items.Add($"{sebessegIkonok[Rover.Sebesseg.Normal]} Sebesség: Normál");
+                    AllapotFrissites();
+                    break;
+                case Key.D3:
+                    rover.AktualisSebesseg = Rover.Sebesseg.Gyors;
+                    NaploLista.Items.Add($"{sebessegIkonok[Rover.Sebesseg.Gyors]} Sebesség: Gyors");
+                    AllapotFrissites();
                     break;
             }
         }
 
-        private void RoverMozgatasa(int eltolasX, int eltolasY)
+        /// <summary>
+        /// Ellenőrzi, hogy egy adott pozíció a pályán belül van-e és járható-e
+        /// </summary>
+        private bool IsJarhato(int x, int y)
         {
-            int ujX = roverX + eltolasX;
-            int ujY = roverY + eltolasY;
+            // Pálya határainak ellenőrzése
+            if (x < 0 || x >= terkep.GetLength(0) || y < 0 || y >= terkep.GetLength(1))
+                return false;
 
-            if (ujX >= 0 && ujX < terkep.GetLength(0) && ujY >= 0 && ujY < terkep.GetLength(1))
+            // Akadály ellenőrzése
+            string cella = terkep[x, y];
+            return cella != "#";
+        }
+
+        /// <summary>
+        /// Intelligens sebességválasztás az energiaszint alapján (biztonsági)
+        /// </summary>
+        private Rover.Sebesseg BiztonsagosSebessegValasztas(Rover.Sebesseg kertSebesseg)
+        {
+            int energiaSzukseglet = 2 * (int)kertSebesseg * (int)kertSebesseg;
+            int toltes = rover.IsNappal ? 10 : 0;
+
+            // Ha a kért sebesség után is legalább 5 energia maradna, mehetünk
+            if (rover.Akku - energiaSzukseglet + toltes >= 5)
             {
-                string cella = terkep[ujX, ujY];
+                return kertSebesseg;
+            }
 
-                // Ha ásvány van ott, próbáljuk meg felvenni
-                if (cella == "B" || cella == "Y" || cella == "G")
+            // Próbáljuk eggyel kisebb sebességgel
+            if (kertSebesseg == Rover.Sebesseg.Gyors)
+            {
+                energiaSzukseglet = 2 * (int)Rover.Sebesseg.Normal * (int)Rover.Sebesseg.Normal;
+                if (rover.Akku - energiaSzukseglet + toltes >= 5)
                 {
-                    if (rover.TryBanyasz(out string uzenet))
+                    return Rover.Sebesseg.Normal;
+                }
+            }
+
+            if (kertSebesseg == Rover.Sebesseg.Normal || kertSebesseg == Rover.Sebesseg.Gyors)
+            {
+                energiaSzukseglet = 2 * (int)Rover.Sebesseg.Lassu * (int)Rover.Sebesseg.Lassu;
+                if (rover.Akku - energiaSzukseglet + toltes >= 2)
+                {
+                    return Rover.Sebesseg.Lassu;
+                }
+            }
+
+            // Ha még lassúhoz sincs energia, akkor várakoznunk kell
+            return Rover.Sebesseg.Lassu; // Megpróbáljuk lassan, a TryMove majd kezeli a részleges mozgást
+        }
+
+        private async void RoverMozgatasa(int eltolasX, int eltolasY, Rover.Sebesseg sebesseg)
+        {
+            // Először ellenőrizzük, hogy egyáltalán van-e értelmes irány
+            if (eltolasX == 0 && eltolasY == 0)
+            {
+                NaploLista.Items.Add($"⚠️ Érvénytelen mozgási irány");
+                await Task.Delay(ANIMACIOS_KESLELTETES);
+                return;
+            }
+
+            // Biztonsági sebességválasztás (soha ne fogyjon ki az aksi)
+            Rover.Sebesseg tenylegesSebesseg = BiztonsagosSebessegValasztas(sebesseg);
+
+            int lepesSzam = (int)tenylegesSebesseg;
+            int aktualisX = roverX;
+            int aktualisY = roverY;
+            int megtettLepesek = 0;
+
+            // Ha a biztonsági választás miatt lassítottunk, jelezzük
+            if (tenylegesSebesseg != sebesseg)
+            {
+                NaploLista.Items.Add($"⚠️ Energiatakarékosság: {sebesseg} → {tenylegesSebesseg} (Akku: {rover.Akku})");
+            }
+
+            // Először számoljuk ki, hány lépést tudunk megtenni az energia alapján
+            int maximalisLepes = lepesSzam;
+            int energiaSzukseglet = 2 * maximalisLepes * maximalisLepes;
+            int toltes = rover.IsNappal ? 10 : 0;
+
+            // Csökkentsük a lépésszámot, ha kell
+            while (maximalisLepes > 0 && rover.Akku - energiaSzukseglet + toltes < 2)
+            {
+                maximalisLepes--;
+                if (maximalisLepes > 0)
+                {
+                    energiaSzukseglet = 2 * maximalisLepes * maximalisLepes;
+                }
+            }
+
+            if (maximalisLepes == 0)
+            {
+                NaploLista.Items.Add($"⚠️ Nincs elég energia a mozgáshoz! (Akku: {rover.Akku})");
+
+                // Ha nappal van, várjunk egy kicsit a töltődésre
+                if (rover.IsNappal && rover.Akku < 90)
+                {
+                    NaploLista.Items.Add($"☀️ Várakozás töltődésre...");
+                    rover.VarakozasEgyFelora(out string uzenet);
+                    AllapotFrissites();
+                }
+
+                await Task.Delay(ANIMACIOS_KESLELTETES);
+                return;
+            }
+
+            // Lépésenként ellenőrizzük a mozgást
+            for (int i = 0; i < maximalisLepes; i++)
+            {
+                int kovetkezoX = aktualisX + eltolasX;
+                int kovetkezoY = aktualisY + eltolasY;
+
+                // Ellenőrizzük, hogy a következő pozíció a pályán belül van-e és járható-e
+                if (!IsJarhato(kovetkezoX, kovetkezoY))
+                {
+                    if (i == 0)
                     {
-                        // Térképről eltüntetjük az ásványt
-                        terkep[ujX, ujY] = ".";
-                        CellaFrissitese(ujX, ujY);
+                        NaploLista.Items.Add($"🚫 Nem lehet mozogni: ({kovetkezoX},{kovetkezoY}) nem járható");
+                    }
+                    break;
+                }
 
-                        // Eseménynapló frissítése
-                        NaploLista.Items.Add($"Ásvány begyűjtve ({ujX},{ujY}): {uzenet}");
-                        NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
+                // Ha van ásvány a következő mezőn, akkor itt megállunk (bányászni kell)
+                string kovetkezoCella = terkep[kovetkezoX, kovetkezoY];
+                if (kovetkezoCella == "B" || kovetkezoCella == "Y" || kovetkezoCella == "G")
+                {
+                    // Ellenőrizzük, hogy van-e elég energia a bányászathoz
+                    if (rover.Akku < 2)
+                    {
+                        NaploLista.Items.Add($"⚠️ Nincs elég energia a bányászathoz! (Akku: {rover.Akku})");
+                        break;
+                    }
 
-                        // Ásványszámláló frissítése
-                        AsvanySzoveg.Text = rover.AsvanyokSzama.ToString();
+                    // Ha az első lépésnél ásványba ütközünk, akkor még ne mozduljunk
+                    if (i == 0)
+                    {
+                        // Megpróbáljuk kibányászni
+                        if (rover.TryBanyasz(out string uzenet))
+                        {
+                            terkep[kovetkezoX, kovetkezoY] = ".";
+                            CellaFrissitese(kovetkezoX, kovetkezoY);
+                            NaploLista.Items.Add($"{sebessegIkonok[tenylegesSebesseg]} Ásvány begyűjtve ({kovetkezoX},{kovetkezoY}): {uzenet}");
+                            AsvanySzoveg.Text = rover.AsvanyokSzama.ToString();
+
+                            // A rover nem mozdul, mert bányászott
+                            AllapotFrissites();
+                            await Task.Delay(ANIMACIOS_KESLELTETES);
+                            return;
+                        }
+                        else
+                        {
+                            NaploLista.Items.Add($"{sebessegIkonok[tenylegesSebesseg]} Nem sikerült bányászni ({kovetkezoX},{kovetkezoY})");
+                            AllapotFrissites();
+                            await Task.Delay(ANIMACIOS_KESLELTETES);
+                            return;
+                        }
                     }
                     else
                     {
-                        // Ha nem sikerült bányászni (pl. kevés akkumulátor)
-                        NaploLista.Items.Add($"Nem sikerült bányászni ({ujX},{ujY}): {uzenet}");
-                        NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
+                        // Ha nem az első lépésnél van ásvány, akkor odaérve megállunk
+                        aktualisX = kovetkezoX;
+                        aktualisY = kovetkezoY;
+                        megtettLepesek++;
+
+                        // Bányászás
+                        if (rover.TryBanyasz(out string uzenet))
+                        {
+                            terkep[aktualisX, aktualisY] = ".";
+                            CellaFrissitese(aktualisX, aktualisY);
+                            NaploLista.Items.Add($"{sebessegIkonok[tenylegesSebesseg]} Ásvány begyűjtve ({aktualisX},{aktualisY}): {uzenet}");
+                            AsvanySzoveg.Text = rover.AsvanyokSzama.ToString();
+                        }
+                        break;
                     }
                 }
 
-                // Ha átjárható a mező, mozgatjuk a rovert
-                if (cella == ".")
-                {
-                    // Régi pozíció frissítése
-                    terkep[roverX, roverY] = ".";
-                    CellaFrissitese(roverX, roverY);
-
-                    // Koordináták frissítése
-                    roverX = ujX;
-                    roverY = ujY;
-
-                    // Rover pozíció frissítése a térképen
-                    terkep[roverX, roverY] = "S";
-                    CellaFrissitese(roverX, roverY);
-
-                    // Kamera célpontjának frissítése
-                    kovetettCel = jatekGombok[roverX, roverY];
-                }
-
-                // Alsó státuszpanel frissítése
-                AllapotFrissites();
+                // Ha sima járható mező, akkor továbblépünk
+                aktualisX = kovetkezoX;
+                aktualisY = kovetkezoY;
+                megtettLepesek++;
             }
+
+            // Ha nem mozdultunk, nincs mit frissíteni
+            if (megtettLepesek == 0)
+            {
+                await Task.Delay(ANIMACIOS_KESLELTETES);
+                return;
+            }
+
+            // Régi pozíció frissítése
+            terkep[roverX, roverY] = ".";
+            CellaFrissitese(roverX, roverY);
+
+            // Új pozíció beállítása
+            int regiX = roverX;
+            int regiY = roverY;
+            roverX = aktualisX;
+            roverY = aktualisY;
+
+            // Rover logika frissítése (energia, idő)
+            int elmozdulasX = roverX - regiX;
+            int elmozdulasY = roverY - regiY;
+
+            if (elmozdulasX != 0 || elmozdulasY != 0)
+            {
+                // A tényleges sebesség kiszámítása a megtett lépések alapján
+                int tenylegesLepesSzam = Math.Max(Math.Abs(elmozdulasX), Math.Abs(elmozdulasY));
+                Rover.Sebesseg tenylegesSebessegErtek;
+
+                if (tenylegesLepesSzam <= 1)
+                    tenylegesSebessegErtek = Rover.Sebesseg.Lassu;
+                else if (tenylegesLepesSzam <= 2)
+                    tenylegesSebessegErtek = Rover.Sebesseg.Normal;
+                else
+                    tenylegesSebessegErtek = Rover.Sebesseg.Gyors;
+
+                bool siker = rover.TryMove(elmozdulasX, elmozdulasY, tenylegesSebessegErtek, out int megtett, out string moveUzenet);
+
+                if (!siker)
+                {
+                    NaploLista.Items.Add($"⚠️ {moveUzenet}");
+                }
+            }
+
+            // Rover pozíció frissítése a térképen
+            terkep[roverX, roverY] = "S";
+            CellaFrissitese(roverX, roverY);
+
+            // Kamera célpontjának frissítése
+            kovetettCel = jatekGombok[roverX, roverY];
+
+            NaploLista.Items.Add($"{sebessegIkonok[tenylegesSebesseg]} Mozgás: {megtettLepesek}/{lepesSzam} lépés {tenylegesSebesseg} sebességgel → ({roverX},{roverY}) (Akku: {rover.Akku})");
+
+            AllapotFrissites();
+
+            // Animációs késleltetés a simább mozgásért
+            await Task.Delay(ANIMACIOS_KESLELTETES);
         }
 
         // Ez a függvény CSAK EGY gomb tartalmát cseréli le, nem az egész pályát
@@ -354,50 +562,51 @@ namespace VadaszDenes
         // UI segédfüggvény: státuszpanel frissítése
         private void AllapotFrissites()
         {
-            if (lblAkkumulator != null) lblAkkumulator.Text = $"Akkumulátor: {rover.Akku}/100";
+            if (lblAkkumulator != null)
+                lblAkkumulator.Text = $"🔋 Akkumulátor: {rover.Akku}/100";
 
-            // Rover.TimeOfDayString használata, ami 24 órás ciklusba csomagolja az időt.
-            // Nap/éjszaka jelző és a napi cikluson belüli félóra index is.
             if (lblIdo != null)
             {
                 string idoString = rover.NapszakString ?? $"{rover.FeloraTick / 2}:{(rover.FeloraTick % 2 * 30).ToString("D2")}";
-                string ciklusInfo = string.Empty;
-                lblIdo.Text = $"Idő: {idoString} ({(rover.IsNappal ? "Nappal" : "Éjszaka")})";
+                string napszak = rover.IsNappal ? "☀️ Nappal" : "🌙 Éjszaka";
+                string sebessegIkon = sebessegIkonok[rover.AktualisSebesseg];
+                string energiaszin = rover.Akku < 20 ? "⚠️ KRITIKUS" : (rover.Akku < 50 ? "⚡ Alacsony" : "✅ Optimális");
+                lblIdo.Text = $"⏰ {idoString} ({napszak}) {sebessegIkon} {energiaszin}";
             }
 
-            if (lblPozicio != null) lblPozicio.Text = $"Pozíció: {rover.X},{rover.Y}";
-            if (lblLepesek != null) lblLepesek.Text = $"Lépések: {rover.LepesSzam}";
-            if (lblAsvanyok != null) lblAsvanyok.Text = $"Kibányászott ásványok: {rover.AsvanyokSzama}";
+            if (lblPozicio != null)
+                lblPozicio.Text = $"📍 Pozíció: {rover.X},{rover.Y}";
+            if (lblLepesek != null)
+                lblLepesek.Text = $"👣 Lépések: {rover.LepesSzam}";
+            if (lblAsvanyok != null)
+                lblAsvanyok.Text = $"💎 Kibányászott ásványok: {rover.AsvanyokSzama}";
         }
 
         // Bányászási kísérlet a rover jelenlegi pozícióján
-        private void BanyaszasAktualisPozicion()
+        private async void BanyaszasAktualisPozicion()
         {
             // Csak akkor engedélyezett a bányászás, ha van ásvány szimbólum a rover alatt: B, Y, G
             string szimbolum = terkep[roverX, roverY];
             if (szimbolum != "B" && szimbolum != "Y" && szimbolum != "G")
             {
-                // lblStatus.Text = "Nincs itt ásvány.";
+                NaploLista.Items.Add("❌ Nincs itt ásvány.");
                 return;
             }
 
             string uzenet;
             bool siker = rover.TryBanyasz(out uzenet);
-            // lblStatus.Text = uzenet;
+            NaploLista.Items.Add(siker ? $"✅ {uzenet}" : $"❌ {uzenet}");
 
             if (siker)
             {
                 // Ásvány eltávolítása a térképről és cella frissítése
                 terkep[roverX, roverY] = "S"; // rover az S-en áll
                 CellaFrissitese(roverX, roverY);
+                AsvanySzoveg.Text = rover.AsvanyokSzama.ToString();
+            }
 
-                AllapotFrissites();
-            }
-            else
-            {
-                // sikertelenség akkumulátor/idő miatt stb., UI frissítése
-                AllapotFrissites();
-            }
+            AllapotFrissites();
+            await Task.Delay(ANIMACIOS_KESLELTETES);
         }
 
         private void BtnBanyasz_Click(object sender, RoutedEventArgs e)
@@ -410,49 +619,78 @@ namespace VadaszDenes
             var utvonal = UtvonalKeresese(roverX, roverY, celX, celY);
             if (utvonal == null)
             {
-                NaploLista.Items.Add($"Nincs elérhető útvonal ({celX},{celY})!");
+                NaploLista.Items.Add($"❌ Nincs elérhető útvonal ({celX},{celY})!");
                 NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
                 return false;
             }
 
-            // Első elem a jelenlegi pozíció, azt hagyjuk ki
-            foreach (var lepes in utvonal.Skip(1))
+            int tavolsag = utvonal.Count - 1; // Első elem a jelenlegi pozíció
+
+            NaploLista.Items.Add($"🛣️ Útvonal hossza: {tavolsag} lépés");
+            NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
+
+            for (int i = 0; i < utvonal.Count - 1; i++)
             {
-                int dx = lepes.X - roverX;
-                int dy = lepes.Y - roverY;
+                var aktualis = utvonal[i];
+                var kovetkezo = utvonal[i + 1];
 
-                Rover.Sebesseg sebesseg = Rover.Sebesseg.Normal;
-                int v = (int)sebesseg;
-                int szuksegesEnergia = 2 * v * v;
-                int akkuLepesUtan = rover.Akku - szuksegesEnergia + (rover.IsNappal ? 10 : 0);
+                int dx = kovetkezo.X - aktualis.X;
+                int dy = kovetkezo.Y - aktualis.Y;
 
-                if (akkuLepesUtan < 0)
+                // Számoljuk a hátralévő távolságot
+                int hatralevoTav = utvonal.Count - i - 1;
+
+                // Optimalis sebesség választás
+                Rover.Sebesseg valasztottSebesseg = rover.OptimalisSebessegValasztas(hatralevoTav);
+
+                // Ellenőrizzük, hogy van-e ásvány a következő mezőn
+                string kovetkezoCella = terkep[kovetkezo.X, kovetkezo.Y];
+                bool asvanyEloterben = kovetkezoCella == "B" || kovetkezoCella == "Y" || kovetkezoCella == "G";
+
+                // Ha ásvány van előttünk, lassítsunk le
+                if (asvanyEloterben && valasztottSebesseg != Rover.Sebesseg.Lassu)
                 {
-                    rover.VarakozasEgyFelora(out string uzenetVar);
-                    NaploLista.Items.Add(uzenetVar);
-                    AllapotFrissites();
-                    await Task.Delay(50);
-                    continue;
+                    valasztottSebesseg = Rover.Sebesseg.Lassu;
+                    NaploLista.Items.Add($"🐢 Lassítás: ásvány előttünk ({kovetkezo.X},{kovetkezo.Y})");
+                    NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
                 }
 
-                RoverMozgatasa(dx, dy);
-                AllapotFrissites();
-                await Task.Delay(50);
+                // Mozgás a kiválasztott sebességgel
+                int eltolasX = kovetkezo.X - roverX;
+                int eltolasY = kovetkezo.Y - roverY;
 
-                // Ásvány felszedése az aktuális mezőn
-                string aktualisCella = terkep[roverX, roverY];
-                if (aktualisCella == "B" || aktualisCella == "Y" || aktualisCella == "G")
+                // Megjegyezzük a régi pozíciót
+                int regiX = roverX;
+                int regiY = roverY;
+
+                // Mozgatás
+                RoverMozgatasa(eltolasX, eltolasY, valasztottSebesseg);
+
+                // Ellenőrizzük, hogy tényleg mozdult-e
+                if (roverX == regiX && roverY == regiY)
                 {
-                    terkep[roverX, roverY] = ".";
-                    CellaFrissitese(roverX, roverY);
-
-                    if (rover.TryBanyasz(out string uzenetBanyasz))
+                    // Ha nem mozdult, próbáljuk újra lassabban
+                    if (valasztottSebesseg != Rover.Sebesseg.Lassu)
                     {
-                        NaploLista.Items.Add($"Felszedett ásvány ({roverX},{roverY}): {uzenetBanyasz}");
+                        NaploLista.Items.Add($"🔄 Újrapróbálkozás lassabb sebességgel...");
+                        RoverMozgatasa(eltolasX, eltolasY, Rover.Sebesseg.Lassu);
+
+                        if (roverX == regiX && roverY == regiY)
+                        {
+                            NaploLista.Items.Add($"❌ Nem sikerült mozogni ({kovetkezo.X},{kovetkezo.Y}) felé");
+                            NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        NaploLista.Items.Add($"❌ Nem sikerült mozogni ({kovetkezo.X},{kovetkezo.Y}) felé");
                         NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
-                        AllapotFrissites();
+                        return false;
                     }
                 }
+
+                AllapotFrissites();
             }
 
             return true;
@@ -460,6 +698,9 @@ namespace VadaszDenes
 
         private async Task OsszesAsvanyGyujteseAsync()
         {
+            NaploLista.Items.Add("=== ÁSVÁNYGYŰJTÉS KEZDÉSE ===");
+            NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
+
             // 1️⃣ Lista készítése az összes ásványról
             List<(int X, int Y)> asvanyok = new List<(int X, int Y)>();
             for (int i = 0; i < 50; i++)
@@ -473,23 +714,80 @@ namespace VadaszDenes
                 }
             }
 
+            NaploLista.Items.Add($"🔍 Összesen {asvanyok.Count} ásvány található");
+            NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
+
+            int gyujtott = 0;
+            int energiaFigyelo = 0;
+
             // 2️⃣ Amíg van ásvány a listában
             while (asvanyok.Count > 0)
             {
+                // Ha nagyon kevés az energia, várjunk a töltődésre
+                if (rover.Akku < 5 && rover.IsNappal)
+                {
+                    NaploLista.Items.Add($"☀️ Energiatakarékos várakozás (Akku: {rover.Akku})...");
+                    await Task.Delay(ANIMACIOS_KESLELTETES * 2);
+                    rover.VarakozasEgyFelora(out string _);
+                    AllapotFrissites();
+                    continue;
+                }
+
                 // 2a️⃣ Legközelebbi ásvány kiválasztása (Manhattan távolság)
                 var kovetkezoCel = asvanyok.OrderBy(m => Math.Abs(m.X - roverX) + Math.Abs(m.Y - roverY)).First();
 
+                int tavolsag = Math.Abs(kovetkezoCel.X - roverX) + Math.Abs(kovetkezoCel.Y - roverY);
+                NaploLista.Items.Add($"🎯 Cél: ({kovetkezoCel.X},{kovetkezoCel.Y}) - Távolság: {tavolsag} (Akku: {rover.Akku})");
+                NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
+
                 // 2b️⃣ Útvonal keresés a célhoz
-                await UtkeresesCelhozAsync(kovetkezoCel.X, kovetkezoCel.Y);
+                bool sikerult = await UtkeresesCelhozAsync(kovetkezoCel.X, kovetkezoCel.Y);
 
-                // 2c️⃣ Felszedett ásvány eltávolítása a listából
-                asvanyok.RemoveAll(m => m.X == roverX && m.Y == roverY);
+                if (sikerult)
+                {
+                    // 2c️⃣ Felszedett ásvány eltávolítása a listából
+                    gyujtott++;
+                    asvanyok.RemoveAll(m => m.X == roverX && m.Y == roverY);
+                    NaploLista.Items.Add($"✅ Begyűjtve! ({gyujtott}/{gyujtott + asvanyok.Count}) (Akku: {rover.Akku})");
+                    NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
+                    energiaFigyelo = 0;
+                }
+                else
+                {
+                    energiaFigyelo++;
 
-                // Rövid delay, hogy UI frissüljön
-                await Task.Delay(50);
+                    // Ha többször nem sikerült, lehet hogy nincs elég energia
+                    if (energiaFigyelo > 3)
+                    {
+                        if (rover.IsNappal)
+                        {
+                            NaploLista.Items.Add($"☀️ Hosszabb várakozás töltődésre...");
+                            for (int i = 0; i < 5; i++)
+                            {
+                                rover.VarakozasEgyFelora(out string _);
+                                await Task.Delay(ANIMACIOS_KESLELTETES);
+                            }
+                            AllapotFrissites();
+                            energiaFigyelo = 0;
+                            continue;
+                        }
+                        else
+                        {
+                            // Ha éjszaka van és nem sikerül, lehet hogy ez az ásvány elérhetetlen
+                            NaploLista.Items.Add($"⚠️ Elérhetetlen ásvány, kihagyás...");
+                            asvanyok.Remove(kovetkezoCel);
+                            energiaFigyelo = 0;
+                        }
+                    }
+                    else
+                    {
+                        // Ha nem sikerült, próbáljuk újra
+                        await Task.Delay(ANIMACIOS_KESLELTETES);
+                    }
+                }
             }
 
-            NaploLista.Items.Add("Minden elérhető ásványt felszedett a rover!");
+            NaploLista.Items.Add($"=== ÁSVÁNYGYŰJTÉS BEFEJEZVE === Összesen {gyujtott} ásványt gyűjtöttünk! (Maradék energia: {rover.Akku})");
             NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
         }
 

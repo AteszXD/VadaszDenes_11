@@ -24,6 +24,8 @@ namespace Bemutato.Assetts
         // Statisztikák
         public int LepesSzam { get; private set; }
         public int AsvanyokSzama { get; private set; }
+        // Aktuális sebesség
+        public Sebesseg AktualisSebesseg { get; set; } = Sebesseg.Normal;
         #endregion
 
         public enum Sebesseg
@@ -41,6 +43,7 @@ namespace Bemutato.Assetts
             FeloraTick = 0;
             LepesSzam = 0;
             AsvanyokSzama = 0;
+            AktualisSebesseg = Sebesseg.Normal;
         }
 
         // Hogy éppen nappal (true) vagy éjszaka (false) van-e
@@ -80,6 +83,30 @@ namespace Bemutato.Assetts
             }
         }
 
+        /// <summary>
+        /// Optimalizált sebesség választás a rendelkezésre álló energia és a napszak alapján
+        /// </summary>
+        public Sebesseg OptimalisSebessegValasztas(int celTavolsag)
+        {
+            int rendelkezesreAlloEnergia = Akku;
+            int toltes = IsNappal ? 10 : 0;
+
+            // Ha nagyon kevés az energia, csak lassan mehetünk
+            if (rendelkezesreAlloEnergia < 10)
+                return Sebesseg.Lassu;
+
+            // Ha közel a cél, mehetünk gyorsabban
+            if (celTavolsag <= 3 && rendelkezesreAlloEnergia >= K * 3 * 3 - toltes)
+                return Sebesseg.Gyors;
+
+            // Ha sok energia van, mehetünk normál sebességgel
+            if (rendelkezesreAlloEnergia > 50)
+                return Sebesseg.Normal;
+
+            // Alapértelmezett: lassú, ha bizonytalan
+            return Sebesseg.Lassu;
+        }
+
         // Mozgási kísérlet az (dx,dy) irányba. dx és dy lépésenkénti iránykomponensek.
         // Lehet átlósan mozogni. Minden hívás egy félórás tevékenységet végez és legfeljebb 'sebesseg' lépést próbál.
         // Igazat ad vissza, ha legalább egy lépést végrehajtott.
@@ -89,23 +116,35 @@ namespace Bemutato.Assetts
         {
             megtettLepesek = 0;
             uzenet = "";
+            AktualisSebesseg = sebesseg;
 
             int vKert = (int)sebesseg;
+
+            // --- JAVÍTÁS: Ha az irány nulla, akkor nem mozgunk, de ez nem hiba ---
             if (dx == 0 && dy == 0)
             {
-                uzenet = "Az irány nem lehet nulla.";
-                return false;
+                uzenet = "A rover nem mozdult (azonos pozíció).";
+                return true; // Ez nem hiba, csak nem történt mozgás
             }
+            // --- JAVÍTÁS VÉGE ---
 
             // Lépésenkénti irány normalizálása -1/0/1 értékekre minden tengelyen (átlós megengedett)
             int lepesX = Math.Sign(dx);
             int lepesY = Math.Sign(dy);
 
+            // Ellenőrizzük, hogy a kért irány egyenes vagy átlós-e
+            int lepesSzam = Math.Max(Math.Abs(dx), Math.Abs(dy));
+            if (lepesSzam > vKert)
+            {
+                // Több lépést kértek, mint amennyi egy félóra alatt megtehető
+                lepesSzam = vKert;
+            }
+
             int toltesEzFelora = IsNappal ? 10 : 0;
 
             // Maximális megengedett sebesség keresése (vJelolt <= vKert) úgy, hogy az akku ne menjen negatívba a félóra után
             int vEngedelyezett = 0;
-            for (int vJelolt = vKert; vJelolt >= 1; vJelolt--)
+            for (int vJelolt = lepesSzam; vJelolt >= 1; vJelolt--)
             {
                 int fogyasztas = K * vJelolt * vJelolt;
                 int netto = -fogyasztas + toltesEzFelora;
@@ -119,7 +158,6 @@ namespace Bemutato.Assetts
             if (vEngedelyezett == 0)
             {
                 uzenet = "Nincs elég akkumulátor egy lépés megtételéhez ebben a félórában.";
-                // Ha nem tud mozogni, az idő akkor is telik, ha várakozást akarunk modellezni; itt nem változtatunk állapotot és false-t adunk vissza
                 return false;
             }
 
@@ -136,8 +174,8 @@ namespace Bemutato.Assetts
             // Idő előrehaladása egy félórával
             FeloraTick++;
 
-            if (vEngedelyezett < vKert)
-                uzenet = $"Részleges mozgás: kért {vKert} lépés, de {vEngedelyezett} lépés történt akkumulátor korlátok miatt.";
+            if (vEngedelyezett < lepesSzam)
+                uzenet = $"Részleges mozgás: kért {lepesSzam} lépés, de {vEngedelyezett} lépés történt akkumulátor korlátok miatt. Sebesség: {sebesseg}";
             else
                 uzenet = $"{vEngedelyezett} lépés megtéve {sebesseg} sebességgel.";
 
@@ -203,6 +241,7 @@ namespace Bemutato.Assetts
             FeloraTick = Math.Max(0, kezdoTick);
             LepesSzam = 0;
             AsvanyokSzama = 0;
+            AktualisSebesseg = Sebesseg.Normal;
         }
     }
 }
