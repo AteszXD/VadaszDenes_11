@@ -13,22 +13,22 @@
         <!-- Alsó státuszpanel Borderrel a Padding miatt -->
         <Border DockPanel.Dock="Bottom" Background="#222" Padding="8">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock x:Name="lblBattery" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                <TextBlock x:Name="lblTime" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                <TextBlock x:Name="lblPosition" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                <TextBlock x:Name="lblSteps" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                <TextBlock x:Name="lblMinerals" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                <TextBlock x:Name="lblAkkumulator" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                <TextBlock x:Name="lblIdo" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                <TextBlock x:Name="lblPozicio" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                <TextBlock x:Name="lblLepesek" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                <TextBlock x:Name="lblAsvanyok" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
             </StackPanel>
         </Border>
 
-        <!-- Jobboldali log + dashboard panel -->
+        <!-- Jobboldali napló + vezérlőpult panel -->
         <Border DockPanel.Dock="Right" Width="220" Background="#333" Padding="5">
             <StackPanel>
-                <TextBlock Text="Minerals collected:" Foreground="White" FontWeight="Bold"/>
-                <TextBlock x:Name="MineralText" Text="0" Foreground="White" Margin="0,0,0,10"/>
+                <TextBlock Text="Begyűjtött ásványok:" Foreground="White" FontWeight="Bold"/>
+                <TextBlock x:Name="AsvanySzoveg" Text="0" Foreground="White" Margin="0,0,0,10"/>
 
-                <TextBlock Text="Event Log:" Foreground="White" FontWeight="Bold"/>
-                <ListBox x:Name="LogList" Height="600" Width="200"/>
+                <TextBlock Text="Eseménynapló:" Foreground="White" FontWeight="Bold"/>
+                <ListBox x:Name="NaploLista" Height="600" Width="200"/>
             </StackPanel>
         </Border>
 

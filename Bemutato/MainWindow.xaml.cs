@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Bemutato.Assetts;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,132 +14,131 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
-using Bemutato.Assetts;
 
 namespace VadaszDenes
 {
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    /// Interakciós logika a MainWindow.xaml-hez
     /// </summary>
     public partial class MainWindow : Window
     {
-        
+
         string[,] terkep = new string[50, 50];
-        Button[,] jatekter = new Button[50, 50];
+        Button[,] jatekGombok = new Button[50, 50];
 
         private int roverX;
         private int roverY;
-        private SimplePathfinder pathfinder;
-        private Rover rover; // rover logic (battery, time, stats)
+        private SimplePathfinder utkereso;
+        private Rover rover; // rover logika (akkumulátor, idő, statisztikák)
 
-        private FrameworkElement target; // Ezt a gombot/képet követjük
-        private double smoothness = 0.1; // 0.0 és 1.0 között (kisebb = simább/lassabb)
+        private FrameworkElement kovetettCel; // Ezt a gombot/képet követjük
+        private double simasag = 0.1; // 0.0 és 1.0 között (kisebb = simább/lassabb)
 
-        // New: current rover image filename (can be changed when moving left)
-        private string roverImageName = "rover.png";
+        // Új: aktuális rover kép fájlnév (változhat balra mozgáskor)
+        private string roverKepNev = "rover.png";
 
         public MainWindow()
         {
-            BetoltTerkep();
+            TerkepBetoltese();
 
-            // Initialize Rover logic and sync starting position from the loaded map
+            // Rover logika inicializálása és kezdőpozíció szinkronizálása a betöltött térképről
             rover = new Rover();
             rover.Reset(roverX, roverY);
 
             InitializeComponent();
-            JatekterGeneralas();
-            JatekterMegjelenites();
-            pathfinder = new SimplePathfinder(terkep);
+            JatekTerGeneralas();
+            JatekTerMegjelenites();
+            utkereso = new SimplePathfinder(terkep);
 
             this.KeyDown += MainWindow_KeyDown;
-            CompositionTarget.Rendering += UpdateCamera;
+            CompositionTarget.Rendering += KameraFrissites;
 
-            // Initial UI sync
-            UpdateStatusUI();
-            // lblStatus.Text = "Ready.";
+            // Kezdeti UI szinkronizálás
+            AllapotFrissites();
+            // lblStatus.Text = "Kész.";
         }
 
-        private void JatekterMegjelenites()
+        private void JatekTerMegjelenites()
         {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string baseMappa = AppDomain.CurrentDomain.BaseDirectory;
 
             for (int i = 0; i < terkep.GetLength(0); i++)
             {
                 for (int j = 0; j < terkep.GetLength(1); j++)
                 {
-                    // Add the button to the parent grid
-                    grdJatekter.Children.Add(jatekter[i, j]);
+                    // Gomb hozzáadása a szülő gridhez
+                    grdJatekter.Children.Add(jatekGombok[i, j]);
 
-                    // Create a container to layer images (base + optional overlay)
-                    var layer = new Grid();
+                    // Tároló létrehozása a rétegekhez (alap + opcionális fedőréteg)
+                    var retegek = new Grid();
 
-                    // Base image: always mars.png
-                    string baseMarsPath = System.IO.Path.Combine(baseDir, "Assetts", "mars.png");
-                    var baseImage = new Image()
+                    // Alapkép: mindig mars.png
+                    string marsUtvonal = System.IO.Path.Combine(baseMappa, "Assetts", "mars.png");
+                    var alapKep = new Image()
                     {
-                        Source = new BitmapImage(new Uri(baseMarsPath)),
+                        Source = new BitmapImage(new Uri(marsUtvonal)),
                         Stretch = Stretch.Fill
                     };
-                    layer.Children.Add(baseImage);
+                    retegek.Children.Add(alapKep);
 
-                    // Determine overlay based on the original content (the map symbol)
-                    string symbol = terkep[i, j]; // use the map data rather than previous Content
-                    string overlayPath = null;
+                    // Fedőréteg meghatározása az eredeti tartalom alapján (térkép szimbólum)
+                    string szimbolum = terkep[i, j]; // térkép adat használata a korábbi Content helyett
+                    string fedoUtvonal = null;
 
-                    switch (symbol)
+                    switch (szimbolum)
                     {
                         case "#":
-                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", "akadaly.png");
+                            fedoUtvonal = System.IO.Path.Combine(baseMappa, "Assetts", "akadaly.png");
                             break;
                         case "B":
-                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", "kek_asvany.png");
+                            fedoUtvonal = System.IO.Path.Combine(baseMappa, "Assetts", "kek_asvany.png");
                             break;
                         case "Y":
-                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", "sarga_asvany.png");
+                            fedoUtvonal = System.IO.Path.Combine(baseMappa, "Assetts", "sarga_asvany.png");
                             break;
                         case "G":
-                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", "zold_asvany.png");
+                            fedoUtvonal = System.IO.Path.Combine(baseMappa, "Assetts", "zold_asvany.png");
                             break;
                         case "S":
-                            // Use the current roverImageName so the initial display matches facing state
-                            overlayPath = System.IO.Path.Combine(baseDir, "Assetts", roverImageName);
+                            // Az aktuális roverKepNev használata, hogy a kezdeti megjelenítés tükrözze a rover irányát
+                            fedoUtvonal = System.IO.Path.Combine(baseMappa, "Assetts", roverKepNev);
                             break;
-                            // case "." -> no overlay (only mars visible)
+                            // case "." -> nincs fedőréteg (csak mars látható)
                     }
 
-                    if (!string.IsNullOrEmpty(overlayPath))
+                    if (!string.IsNullOrEmpty(fedoUtvonal))
                     {
-                        var overlayImage = new Image()
+                        var fedoKep = new Image()
                         {
-                            Source = new BitmapImage(new Uri(overlayPath)),
+                            Source = new BitmapImage(new Uri(fedoUtvonal)),
                             Stretch = Stretch.Fill
                         };
-                        // Make sure overlays don't block click events on the button if needed
-                        overlayImage.IsHitTestVisible = false;
-                        layer.Children.Add(overlayImage);
+                        // Biztosítjuk, hogy a fedőrétegek ne blokkolják a gomb kattintási eseményeket, ha szükséges
+                        fedoKep.IsHitTestVisible = false;
+                        retegek.Children.Add(fedoKep);
 
-                        if (symbol == "S")
+                        if (szimbolum == "S")
                         {
-                            // Keep target as the Button so camera logic still finds the button position
-                            target = jatekter[i, j];
+                            // Célként a gombot tartjuk meg, hogy a kamera logika továbbra is megtalálja a gomb pozícióját
+                            kovetettCel = jatekGombok[i, j];
                         }
                     }
 
-                    // Assign the layered Grid as the button's content
-                    jatekter[i, j].Content = layer;
+                    // Rétegezett Grid beállítása a gomb tartalmaként
+                    jatekGombok[i, j].Content = retegek;
 
-                    this.Focus(); // A Window-ra irányítjuk a fókuszt
+                    this.Focus(); // Fókusz a Window-ra irányítása
                 }
             }
         }
 
-        private void JatekterGeneralas()
+        private void JatekTerGeneralas()
         {
             for (int i = 0; i < terkep.GetLength(0); i++)
             {
                 for (int j = 0; j < terkep.GetLength(1); j++)
                 {
-                    Button button = new Button()
+                    Button gomb = new Button()
                     {
                         Content = terkep[i, j],
                         Height = 200,
@@ -147,20 +147,20 @@ namespace VadaszDenes
                         VerticalAlignment = VerticalAlignment.Top,
                         Margin = new Thickness(10 + (j * 200), 10 + (i * 200), 0, 0),
                     };
-                    button.Background = Brushes.Black;
-                    button.Foreground = Brushes.White;
-                    button.Focusable = false; // Ne tudják a gombok ellopni a fókuszt a Window elől
-                    jatekter[i, j] = button;
+                    gomb.Background = Brushes.Black;
+                    gomb.Foreground = Brushes.White;
+                    gomb.Focusable = false; // Ne tudják a gombok ellopni a fókuszt a Window elől
+                    jatekGombok[i, j] = gomb;
                 }
             }
         }
 
-        private void BetoltTerkep()
+        private void TerkepBetoltese()
         {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string filePath = System.IO.Path.Combine(baseDir, "Assetts", "mars_map_50x50.csv");
+            string baseMappa = AppDomain.CurrentDomain.BaseDirectory;
+            string fajlUtvonal = System.IO.Path.Combine(baseMappa, "Assetts", "mars_map_50x50.csv");
 
-            string[] sorok = File.ReadAllLines(filePath);
+            string[] sorok = File.ReadAllLines(fajlUtvonal);
             for (int i = 0; i < terkep.GetLength(0); i++)
             {
                 string[] adatok = sorok[i].Split(',');
@@ -168,11 +168,11 @@ namespace VadaszDenes
                 {
                     terkep[i, j] = adatok[j];
 
-                    // Itt keressük meg a rovert (S = Start/Source)
+                    // Itt keressük meg a rovert (S = Start/Forrás)
                     if (terkep[i, j] == "S")
                     {
-                        roverX = i; // Eltároljuk a sor indexét
-                        roverY = j; // Eltároljuk az oszlop indexét
+                        roverX = i; // Sor index tárolása
+                        roverY = j; // Oszlop index tárolása
                     }
                 }
             }
@@ -185,108 +185,108 @@ namespace VadaszDenes
             {
                 double zoom = e.Delta > 0 ? 0.1 : -0.1;
 
-                // Kiszámoljuk az új méretet
-                double nextScale = st.ScaleX + zoom;
+                // Új méret kiszámítása
+                double kovetkezoMeret = st.ScaleX + zoom;
 
                 // Korlátok: ne lehessen 20%-nál kisebb és 10x-esnél nagyobb
-                if (nextScale >= 0.2 && nextScale <= 10.0)
+                if (kovetkezoMeret >= 0.2 && kovetkezoMeret <= 10.0)
                 {
-                    st.ScaleX = nextScale;
-                    st.ScaleY = nextScale;
+                    st.ScaleX = kovetkezoMeret;
+                    st.ScaleY = kovetkezoMeret;
                 }
 
-                // Elnyomjuk az eseményt, hogy ne görgessen le-fel zoomolás közben
+                // Esemény elnyomása, hogy ne görgessen le-fel zoomolás közben
                 e.Handled = true;
             }
         }
 
-        private void UpdateCamera(object sender, EventArgs e)
+        private void KameraFrissites(object sender, EventArgs e)
         {
-            if (target == null) return;
+            if (kovetettCel == null) return;
 
-            // Try to locate the ScrollViewer instance defined in XAML (handles different naming)
+            // ScrollViewer példány megkeresése a XAML-ben (különböző elnevezések kezelése)
             var sv = this.FindName("ScrollViewer") as ScrollViewer ?? this.FindName("scrollViewer") as ScrollViewer;
-            if (sv == null) return; // cannot proceed without the ScrollViewer instance
-            if (st == null) return; // ensure the ScaleTransform exists
+            if (sv == null) return; // nem lehet folytatni ScrollViewer példány nélkül
+            if (st == null) return; // ScaleTransform létezésének ellenőrzése
 
-            // 1. Target position on the grid
-            Point targetPos = target.TransformToAncestor(grdJatekter).Transform(new Point(0, 0));
+            // 1. Cél pozíciója a grid-en
+            Point celPozicio = kovetettCel.TransformToAncestor(grdJatekter).Transform(new Point(0, 0));
 
-            // Use RenderSize to get actual dimensions from the instance (avoids static-access ambiguity)
-            double targetCenterX = targetPos.X + target.RenderSize.Width / 2.0;
-            double targetCenterY = targetPos.Y + target.RenderSize.Height / 2.0;
+            // Tényleges méretek használata a példányból (statikus elérésű kétértelműség elkerülése)
+            double celKozepX = celPozicio.X + kovetettCel.RenderSize.Width / 2.0;
+            double celKozepY = celPozicio.Y + kovetettCel.RenderSize.Height / 2.0;
 
-            // Apply current scale and center the view on the target
-            double destX = targetCenterX * st.ScaleX - (sv.ActualWidth / 2.0);
-            double destY = targetCenterY * st.ScaleY - (sv.ActualHeight / 2.0);
+            // Aktuális skála alkalmazása és nézet középre igazítása a célon
+            double celX = celKozepX * st.ScaleX - (sv.ActualWidth / 2.0);
+            double celY = celKozepY * st.ScaleY - (sv.ActualHeight / 2.0);
 
-            // 2. Current position from the ScrollViewer instance
-            double currentX = sv.HorizontalOffset;
-            double currentY = sv.VerticalOffset;
+            // 2. Aktuális pozíció a ScrollViewer-ből
+            double aktualisX = sv.HorizontalOffset;
+            double aktualisY = sv.VerticalOffset;
 
-            // 3. Smooth interpolation
-            double nextX = currentX + (destX - currentX) * smoothness;
-            double nextY = currentY + (destY - currentY) * smoothness;
+            // 3. Sima interpoláció
+            double kovetkezoX = aktualisX + (celX - aktualisX) * simasag;
+            double kovetkezoY = aktualisY + (celY - aktualisY) * simasag;
 
-            // 4. Move the ScrollViewer (instance calls)
-            sv.ScrollToHorizontalOffset(nextX);
-            sv.ScrollToVerticalOffset(nextY);
+            // 4. ScrollViewer mozgatása
+            sv.ScrollToHorizontalOffset(kovetkezoX);
+            sv.ScrollToVerticalOffset(kovetkezoY);
         }
 
         private async void MainWindow_KeyDown(object sender, KeyEventArgs e)
         {
             switch (e.Key)
             {
-                case Key.W: case Key.Up: RoverMozgatas(-1, 0); break;
-                case Key.S: case Key.Down: RoverMozgatas(1, 0); break;
-                case Key.A: case Key.Left: RoverMozgatas(0, -1); break;
-                case Key.D: case Key.Right: RoverMozgatas(0, 1); break;
+                case Key.W: case Key.Up: RoverMozgatasa(-1, 0); break;
+                case Key.S: case Key.Down: RoverMozgatasa(1, 0); break;
+                case Key.A: case Key.Left: RoverMozgatasa(0, -1); break;
+                case Key.D: case Key.Right: RoverMozgatasa(0, 1); break;
                 case Key.Space:
-                    MessageBox.Show("SPACE pressed");
-                    await CollectAllMineralsAsync();
+                    MessageBox.Show("SPACE lenyomva");
+                    await OsszesAsvanyGyujteseAsync();
                     break;
             }
         }
 
-        private void RoverMozgatas(int eltolasX, int eltolasY)
+        private void RoverMozgatasa(int eltolasX, int eltolasY)
         {
             int ujX = roverX + eltolasX;
             int ujY = roverY + eltolasY;
 
             if (ujX >= 0 && ujX < terkep.GetLength(0) && ujY >= 0 && ujY < terkep.GetLength(1))
             {
-                string cell = terkep[ujX, ujY];
+                string cella = terkep[ujX, ujY];
 
                 // Ha ásvány van ott, próbáljuk meg felvenni
-                if (cell == "B" || cell == "Y" || cell == "G")
+                if (cella == "B" || cella == "Y" || cella == "G")
                 {
-                    if (rover.TryMine(out string msg))
+                    if (rover.TryBanyasz(out string uzenet))
                     {
                         // Térképről eltüntetjük az ásványt
                         terkep[ujX, ujY] = ".";
-                        FrissitsEgyCellat(ujX, ujY);
+                        CellaFrissitese(ujX, ujY);
 
-                        // Event log frissítése
-                        LogList.Items.Add($"Mineral collected at ({ujX},{ujY}): {msg}");
-                        LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
+                        // Eseménynapló frissítése
+                        NaploLista.Items.Add($"Ásvány begyűjtve ({ujX},{ujY}): {uzenet}");
+                        NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
 
-                        // Mineral számláló frissítése
-                        MineralText.Text = rover.MineralsMined.ToString();
+                        // Ásványszámláló frissítése
+                        AsvanySzoveg.Text = rover.AsvanyokSzama.ToString();
                     }
                     else
                     {
                         // Ha nem sikerült bányászni (pl. kevés akkumulátor)
-                        LogList.Items.Add($"Could not mine at ({ujX},{ujY}): {msg}");
-                        LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
+                        NaploLista.Items.Add($"Nem sikerült bányászni ({ujX},{ujY}): {uzenet}");
+                        NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
                     }
                 }
 
                 // Ha átjárható a mező, mozgatjuk a rovert
-                if (cell == ".")
+                if (cella == ".")
                 {
                     // Régi pozíció frissítése
                     terkep[roverX, roverY] = ".";
-                    FrissitsEgyCellat(roverX, roverY);
+                    CellaFrissitese(roverX, roverY);
 
                     // Koordináták frissítése
                     roverX = ujX;
@@ -294,163 +294,163 @@ namespace VadaszDenes
 
                     // Rover pozíció frissítése a térképen
                     terkep[roverX, roverY] = "S";
-                    FrissitsEgyCellat(roverX, roverY);
+                    CellaFrissitese(roverX, roverY);
 
-                    // A kamera célpontjának frissítése
-                    target = jatekter[roverX, roverY];
+                    // Kamera célpontjának frissítése
+                    kovetettCel = jatekGombok[roverX, roverY];
                 }
 
-                // Frissítjük az alsó státuszpanelt
-                UpdateStatusUI();
+                // Alsó státuszpanel frissítése
+                AllapotFrissites();
             }
         }
 
         // Ez a függvény CSAK EGY gomb tartalmát cseréli le, nem az egész pályát
-        private void FrissitsEgyCellat(int sor, int oszlop)
+        private void CellaFrissitese(int sor, int oszlop)
         {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            var layer = new Grid();
+            string baseMappa = AppDomain.CurrentDomain.BaseDirectory;
+            var retegek = new Grid();
 
             // Alapkőzet (Mars)
-            string marsPath = System.IO.Path.Combine(baseDir, "Assetts", "mars.png");
-            layer.Children.Add(new Image
+            string marsUtvonal = System.IO.Path.Combine(baseMappa, "Assetts", "mars.png");
+            retegek.Children.Add(new Image
             {
-                Source = new BitmapImage(new Uri(marsPath)),
+                Source = new BitmapImage(new Uri(marsUtvonal)),
                 Stretch = Stretch.Fill
             });
 
             // Mi van ott most? - Hagyományos switch blokk használata
-            string symbol = terkep[sor, oszlop];
-            string overlayName = null;
+            string szimbolum = terkep[sor, oszlop];
+            string fedoNev = null;
 
-            switch (symbol)
+            switch (szimbolum)
             {
-                case "#": overlayName = "akadaly.png"; break;
-                case "B": overlayName = "kek_asvany.png"; break;
-                case "Y": overlayName = "sarga_asvany.png"; break;
-                case "G": overlayName = "zold_asvany.png"; break;
+                case "#": fedoNev = "akadaly.png"; break;
+                case "B": fedoNev = "kek_asvany.png"; break;
+                case "Y": fedoNev = "sarga_asvany.png"; break;
+                case "G": fedoNev = "zold_asvany.png"; break;
                 case "S":
-                    // Use the dynamic roverImageName so facing is reflected
-                    overlayName = roverImageName;
+                    // Dinamikus roverKepNev használata, hogy az irány tükröződjön
+                    fedoNev = roverKepNev;
                     break;
-                default: overlayName = null; break;
+                default: fedoNev = null; break;
             }
 
-            if (overlayName != null)
+            if (fedoNev != null)
             {
-                string path = System.IO.Path.Combine(baseDir, "Assetts", overlayName);
-                layer.Children.Add(new Image
+                string utvonal = System.IO.Path.Combine(baseMappa, "Assetts", fedoNev);
+                retegek.Children.Add(new Image
                 {
-                    Source = new BitmapImage(new Uri(path)),
+                    Source = new BitmapImage(new Uri(utvonal)),
                     Stretch = Stretch.Fill,
                     IsHitTestVisible = false
                 });
             }
 
-            // A gomb tartalmának frissítése
-            jatekter[sor, oszlop].Content = layer;
+            // Gomb tartalmának frissítése
+            jatekGombok[sor, oszlop].Content = retegek;
         }
 
-        // UI helper: update status panel
-        private void UpdateStatusUI()
+        // UI segédfüggvény: státuszpanel frissítése
+        private void AllapotFrissites()
         {
-            if (lblBattery != null) lblBattery.Text = $"Akkumulátor: {rover.Battery}/100";
+            if (lblAkkumulator != null) lblAkkumulator.Text = $"Akkumulátor: {rover.Akku}/100";
 
-            // Use rover.TimeOfDayString which wraps time into a 24-hour loop.
-            // Also include the half-hour index within the day-cycle and day/night indicator.
-            if (lblTime != null)
+            // Rover.TimeOfDayString használata, ami 24 órás ciklusba csomagolja az időt.
+            // Nap/éjszaka jelző és a napi cikluson belüli félóra index is.
+            if (lblIdo != null)
             {
-                string timeString = rover.TimeOfDayString ?? $"{rover.HalfHourTick / 2}:{(rover.HalfHourTick % 2 * 30).ToString("D2")}";
-                string cycleInfo = string.Empty;
-                lblTime.Text = $"Idő: {timeString} ({(rover.IsDay ? "Nappal" : "Éjszaka")})";
+                string idoString = rover.NapszakString ?? $"{rover.FeloraTick / 2}:{(rover.FeloraTick % 2 * 30).ToString("D2")}";
+                string ciklusInfo = string.Empty;
+                lblIdo.Text = $"Idő: {idoString} ({(rover.IsNappal ? "Nappal" : "Éjszaka")})";
             }
 
-            if (lblPosition != null) lblPosition.Text = $"Pozíció: {rover.X},{rover.Y}";
-            if (lblSteps != null) lblSteps.Text = $"Lépések: {rover.StepsMoved}";
-            if (lblMinerals != null) lblMinerals.Text = $"Kibányászott ásványok: {rover.MineralsMined}";
+            if (lblPozicio != null) lblPozicio.Text = $"Pozíció: {rover.X},{rover.Y}";
+            if (lblLepesek != null) lblLepesek.Text = $"Lépések: {rover.LepesSzam}";
+            if (lblAsvanyok != null) lblAsvanyok.Text = $"Kibányászott ásványok: {rover.AsvanyokSzama}";
         }
 
-        // Attempt to mine at the rover's current map cell.
-        private void MineAtCurrentPosition()
+        // Bányászási kísérlet a rover jelenlegi pozícióján
+        private void BanyaszasAktualisPozicion()
         {
-            // Only allow mining if there's a mineral symbol under rover: B, Y, G
-            string symbol = terkep[roverX, roverY];
-            if (symbol != "B" && symbol != "Y" && symbol != "G")
+            // Csak akkor engedélyezett a bányászás, ha van ásvány szimbólum a rover alatt: B, Y, G
+            string szimbolum = terkep[roverX, roverY];
+            if (szimbolum != "B" && szimbolum != "Y" && szimbolum != "G")
             {
-                // lblStatus.Text = "No mineral here to mine.";
+                // lblStatus.Text = "Nincs itt ásvány.";
                 return;
             }
 
-            string message;
-            bool success = rover.TryMine(out message);
-            // lblStatus.Text = message;
+            string uzenet;
+            bool siker = rover.TryBanyasz(out uzenet);
+            // lblStatus.Text = uzenet;
 
-            if (success)
+            if (siker)
             {
-                // Remove mineral from map and refresh the cell
-                terkep[roverX, roverY] = "S"; // rover stands on S
-                FrissitsEgyCellat(roverX, roverY);
+                // Ásvány eltávolítása a térképről és cella frissítése
+                terkep[roverX, roverY] = "S"; // rover az S-en áll
+                CellaFrissitese(roverX, roverY);
 
-                UpdateStatusUI();
+                AllapotFrissites();
             }
             else
             {
-                // failed due to battery/time etc. still update UI
-                UpdateStatusUI();
+                // sikertelenség akkumulátor/idő miatt stb., UI frissítése
+                AllapotFrissites();
             }
         }
 
-        private void BtnMine_Click(object sender, RoutedEventArgs e)
+        private void BtnBanyasz_Click(object sender, RoutedEventArgs e)
         {
-            MineAtCurrentPosition();
+            BanyaszasAktualisPozicion();
         }
 
-        private async Task<bool> PathfindToAsync(int targetX, int targetY)
+        private async Task<bool> UtkeresesCelhozAsync(int celX, int celY)
         {
-            var path = FindPath(roverX, roverY, targetX, targetY);
-            if (path == null)
+            var utvonal = UtvonalKeresese(roverX, roverY, celX, celY);
+            if (utvonal == null)
             {
-                LogList.Items.Add($"Nincs elérhető útvonal ({targetX},{targetY})!");
-                LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
+                NaploLista.Items.Add($"Nincs elérhető útvonal ({celX},{celY})!");
+                NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
                 return false;
             }
 
             // Első elem a jelenlegi pozíció, azt hagyjuk ki
-            foreach (var step in path.Skip(1))
+            foreach (var lepes in utvonal.Skip(1))
             {
-                int dx = step.X - roverX;
-                int dy = step.Y - roverY;
+                int dx = lepes.X - roverX;
+                int dy = lepes.Y - roverY;
 
-                Rover.Speed speed = Rover.Speed.Normal;
-                int v = (int)speed;
-                int requiredEnergy = 2 * v * v;
-                int batteryAfterMove = rover.Battery - requiredEnergy + (rover.IsDay ? 10 : 0);
+                Rover.Sebesseg sebesseg = Rover.Sebesseg.Normal;
+                int v = (int)sebesseg;
+                int szuksegesEnergia = 2 * v * v;
+                int akkuLepesUtan = rover.Akku - szuksegesEnergia + (rover.IsNappal ? 10 : 0);
 
-                if (batteryAfterMove < 0)
+                if (akkuLepesUtan < 0)
                 {
-                    rover.WaitOneHalfHour(out string msgWait);
-                    LogList.Items.Add(msgWait);
-                    UpdateStatusUI();
+                    rover.VarakozasEgyFelora(out string uzenetVar);
+                    NaploLista.Items.Add(uzenetVar);
+                    AllapotFrissites();
                     await Task.Delay(50);
                     continue;
                 }
 
-                RoverMozgatas(dx, dy);
-                UpdateStatusUI();
+                RoverMozgatasa(dx, dy);
+                AllapotFrissites();
                 await Task.Delay(50);
 
                 // Ásvány felszedése az aktuális mezőn
-                string currentCell = terkep[roverX, roverY];
-                if (currentCell == "B" || currentCell == "Y" || currentCell == "G")
+                string aktualisCella = terkep[roverX, roverY];
+                if (aktualisCella == "B" || aktualisCella == "Y" || aktualisCella == "G")
                 {
                     terkep[roverX, roverY] = ".";
-                    FrissitsEgyCellat(roverX, roverY);
+                    CellaFrissitese(roverX, roverY);
 
-                    if (rover.TryMine(out string msgMine))
+                    if (rover.TryBanyasz(out string uzenetBanyasz))
                     {
-                        LogList.Items.Add($"Felszedett ásvány ({roverX},{roverY}): {msgMine}");
-                        LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
-                        UpdateStatusUI();
+                        NaploLista.Items.Add($"Felszedett ásvány ({roverX},{roverY}): {uzenetBanyasz}");
+                        NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
+                        AllapotFrissites();
                     }
                 }
             }
@@ -458,67 +458,67 @@ namespace VadaszDenes
             return true;
         }
 
-        private async Task CollectAllMineralsAsync()
+        private async Task OsszesAsvanyGyujteseAsync()
         {
-            // 1️⃣ Készítsünk listát az összes ásványról
-            List<(int X, int Y)> minerals = new List<(int X, int Y)>();
+            // 1️⃣ Lista készítése az összes ásványról
+            List<(int X, int Y)> asvanyok = new List<(int X, int Y)>();
             for (int i = 0; i < 50; i++)
             {
                 for (int j = 0; j < 50; j++)
                 {
                     if (terkep[i, j] == "B" || terkep[i, j] == "Y" || terkep[i, j] == "G")
                     {
-                        minerals.Add((i, j));
+                        asvanyok.Add((i, j));
                     }
                 }
             }
 
             // 2️⃣ Amíg van ásvány a listában
-            while (minerals.Count > 0)
+            while (asvanyok.Count > 0)
             {
                 // 2a️⃣ Legközelebbi ásvány kiválasztása (Manhattan távolság)
-                var nextTarget = minerals.OrderBy(m => Math.Abs(m.X - roverX) + Math.Abs(m.Y - roverY)).First();
+                var kovetkezoCel = asvanyok.OrderBy(m => Math.Abs(m.X - roverX) + Math.Abs(m.Y - roverY)).First();
 
-                // 2b️⃣ Pathfinding a célhoz
-                await PathfindToAsync(nextTarget.X, nextTarget.Y);
+                // 2b️⃣ Útvonal keresés a célhoz
+                await UtkeresesCelhozAsync(kovetkezoCel.X, kovetkezoCel.Y);
 
                 // 2c️⃣ Felszedett ásvány eltávolítása a listából
-                minerals.RemoveAll(m => m.X == roverX && m.Y == roverY);
+                asvanyok.RemoveAll(m => m.X == roverX && m.Y == roverY);
 
                 // Rövid delay, hogy UI frissüljön
                 await Task.Delay(50);
             }
 
-            LogList.Items.Add("Minden elérhető ásványt felszedett a rover!");
-            LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
+            NaploLista.Items.Add("Minden elérhető ásványt felszedett a rover!");
+            NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
         }
 
-        private List<(int X, int Y)> FindPath(int startX, int startY, int goalX, int goalY)
+        private List<(int X, int Y)> UtvonalKeresese(int startX, int startY, int celX, int celY)
         {
-            var open = new List<Node>();
-            var closed = new HashSet<(int, int)>();
+            var nyitott = new List<Csomopont>();
+            var zart = new HashSet<(int, int)>();
 
-            open.Add(new Node(startX, startY));
+            nyitott.Add(new Csomopont(startX, startY));
 
-            while (open.Count > 0)
+            while (nyitott.Count > 0)
             {
-                // A legkisebb F-értékű csomópont kiválasztása
-                var current = open.OrderBy(n => n.F).First();
-                open.Remove(current);
-                closed.Add((current.X, current.Y));
+                // Legkisebb F-értékű csomópont kiválasztása
+                var aktualis = nyitott.OrderBy(n => n.F).First();
+                nyitott.Remove(aktualis);
+                zart.Add((aktualis.X, aktualis.Y));
 
                 // Ha célhoz értünk, építsük vissza az utat
-                if (current.X == goalX && current.Y == goalY)
+                if (aktualis.X == celX && aktualis.Y == celY)
                 {
-                    var path = new List<(int, int)>();
-                    var node = current;
-                    while (node != null)
+                    var utvonal = new List<(int, int)>();
+                    var csomopont = aktualis;
+                    while (csomopont != null)
                     {
-                        path.Add((node.X, node.Y));
-                        node = node.Parent;
+                        utvonal.Add((csomopont.X, csomopont.Y));
+                        csomopont = csomopont.Szulo;
                     }
-                    path.Reverse();
-                    return path;
+                    utvonal.Reverse();
+                    return utvonal;
                 }
 
                 // Szomszédok: 8 irány (diagonális is)
@@ -528,8 +528,8 @@ namespace VadaszDenes
                     {
                         if (dx == 0 && dy == 0) continue;
 
-                        int nx = current.X + dx;
-                        int ny = current.Y + dy;
+                        int nx = aktualis.X + dx;
+                        int ny = aktualis.Y + dy;
 
                         // Határok ellenőrzése
                         if (nx < 0 || nx >= 50 || ny < 0 || ny >= 50) continue;
@@ -537,23 +537,41 @@ namespace VadaszDenes
                         // Akadályok kizárása
                         if (terkep[nx, ny] == "#") continue;
 
-                        if (closed.Contains((nx, ny))) continue;
+                        if (zart.Contains((nx, ny))) continue;
 
-                        int gCost = current.G + 1;
-                        int hCost = Math.Abs(goalX - nx) + Math.Abs(goalY - ny); // Manhattan távolság
-                        var neighbor = new Node(nx, ny, current) { G = gCost, H = hCost };
+                        int gKoltseg = aktualis.G + 1;
+                        int hKoltseg = Math.Abs(celX - nx) + Math.Abs(celY - ny); // Manhattan távolság
+                        var szomszed = new Csomopont(nx, ny, aktualis) { G = gKoltseg, H = hKoltseg };
 
                         // Ha van már jobb út a nyitott listában, ne adjuk hozzá
-                        var existing = open.FirstOrDefault(n => n.X == nx && n.Y == ny);
-                        if (existing != null && existing.G <= neighbor.G) continue;
+                        var letezo = nyitott.FirstOrDefault(n => n.X == nx && n.Y == ny);
+                        if (letezo != null && letezo.G <= szomszed.G) continue;
 
-                        open.Add(neighbor);
+                        nyitott.Add(szomszed);
                     }
                 }
             }
 
             // Nincs útvonal
             return null;
+        }
+    }
+
+    // Belső osztály az A* algoritmushoz
+    public class Csomopont
+    {
+        public int X { get; set; }
+        public int Y { get; set; }
+        public int G { get; set; } // Kezdőponttól számított költség
+        public int H { get; set; } // Heurisztika (becsült távolság a célig)
+        public int F => G + H; // Teljes becsült költség
+        public Csomopont Szulo { get; set; }
+
+        public Csomopont(int x, int y, Csomopont szulo = null)
+        {
+            X = x;
+            Y = y;
+            Szulo = szulo;
         }
     }
 }

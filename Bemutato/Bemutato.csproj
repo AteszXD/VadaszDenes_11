@@ -63,16 +63,16 @@
       <DependentUpon>App.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Assetts\Rover.cs" />
+    <Compile Include="Models\Rover.cs" />
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="models\Node.cs" />
-    <Compile Include="models\Pathfinder.cs" />
-    <Compile Include="models\RoverEvent.cs" />
+    <Compile Include="Models\Node.cs" />
+    <Compile Include="Models\Pathfinder.cs" />
+    <Compile Include="Models\RoverEvent.cs" />
     <Compile Include="Properties\AssemblyInfo.cs">
       <SubType>Code</SubType>
     </Compile>
