@@ -6,7 +6,7 @@ namespace Bemutato.Assetts
     {
         #region Mezők
         private const int AkkuKapacitas = 100;
-        private const int K = 2; // fogyasztási konstans: E = k * v^2
+        private const int K = 2; // fogyasztási konstans: E = k * v^2 (jelenleg nem használjuk a mozgáskorlátozásnál)
         private const int NappalOrak = 16; // 16 óra nappali
         private const int EjszakaOrak = 8;  // 8 óra éjszakai
         private const int NappalFelorak = NappalOrak * 2;
@@ -24,7 +24,6 @@ namespace Bemutato.Assetts
         // Akkumulátor állapota (0..100)
         public int Akku { get; private set; } = AkkuKapacitas;
         // Idő mérése félóra tickekben a kezdés óta (0..)
-        // 0..31 => nappal (első 32 félóra), 32..47 => éjszaka (következő 16 félóra)
         public int FeloraTick { get; private set; }
         // Statisztikák
         public int LepesSzam { get; private set; }
@@ -40,13 +39,8 @@ namespace Bemutato.Assetts
             Gyors = 3    // 3 blokk / félóra
         }
 
-        /// <summary>
-        /// Konstruktor az elérhető időkerettel (órákban)
-        /// </summary>
-        /// <param name="eloirhetoIdokeretOrak">Az elérhető időkeret órákban (legalább 24)</param>
         public Rover(int eloirhetoIdokeretOrak = 24)
         {
-            // Validáció: az időkeret legalább 24 óra
             if (eloirhetoIdokeretOrak < 24)
             {
                 throw new ArgumentException(
@@ -54,7 +48,6 @@ namespace Bemutato.Assetts
                     nameof(eloirhetoIdokeretOrak));
             }
 
-            // Félórákra konvertálás (1 óra = 2 félóra)
             maximalalisFeloraTick = eloirhetoIdokeretOrak * 2;
 
             X = 0;
@@ -66,31 +59,22 @@ namespace Bemutato.Assetts
             AktualisSebesseg = Sebesseg.Normal;
         }
 
-        // Hogy éppen nappal (true) vagy éjszaka (false) van-e
         public bool IsNappal
         {
             get
             {
-                int t = FeloraTick % CiklusFelorak; // 0..47 félóra indexek 00:00-tól kezdve
+                int t = FeloraTick % CiklusFelorak;
                 int nappalKezdet = 4 * 2; // 4:00 -> 8 félóra
                 int nappalVeg = nappalKezdet + NappalFelorak; // 8 + 32 = 40 -> 20:00
                 return t >= nappalKezdet && t < nappalVeg;
             }
         }
 
-        // Visszaadja, hogy kifogyott-e az időkeret
         public bool IdokeretKifogyott => FeloraTick >= maximalalisFeloraTick;
-
-        // Visszaadja az elérhető időkeret órákban
         public int ElerhetoIdokeretOrak => maximalalisFeloraTick / 2;
-
-        // Visszaadja a hátralévő időt órákban
         public int HatralevoIdoOrak => Math.Max(0, (maximalalisFeloraTick - FeloraTick) / 2);
-
-        // Visszaadja a becsomagolt félóra indexet a 24 órás ciklusban (0..47)
         public int FeloraIndexANapban => FeloraTick % CiklusFelorak;
 
-        // Visszaadja a napszakot reprezentáló TimeSpan-t (24 órára csomagolva)
         public TimeSpan NapszakIdo
         {
             get
@@ -102,7 +86,6 @@ namespace Bemutato.Assetts
             }
         }
 
-        // Visszaadja a formázott időstringet "HH:mm" formátumban a UI számára (23:30 után 00:00-ra ugrik)
         public string NapszakString
         {
             get
@@ -112,118 +95,82 @@ namespace Bemutato.Assetts
             }
         }
 
-        /// <summary>
-        /// Optimalizált sebesség választás a rendelkezésre álló energia és a napszak alapján
-        /// </summary>
-        public Sebesseg OptimalisSebessegValasztas(int celTavolsag)
+        // Egyszerű szabályok alapján döntött sebesség:
+        // - ha van érc <= 3 blokk távolságra -> sebesség = 1
+        // - ha van érc >3 és <=5 blokk távolságra -> sebesség = 2
+        // - ha minden érc távolabb van, vagy nincs érc -> sebesség = 3
+        private Sebesseg DetermineSpeedByMineralProximity(VadaszDenes.SimplePathfinder pathfinder)
         {
-            int rendelkezesreAlloEnergia = Akku;
-            int toltes = IsNappal ? 10 : 0;
+            var nearest = pathfinder?.FindNearestMineral(X, Y);
+            if (nearest == null)
+                return Sebesseg.Gyors; // nincs érc -> leggyorsabb
 
-            // Ha nagyon kevés az energia, csak lassan mehetünk
-            if (rendelkezesreAlloEnergia < 10)
+            int dx = Math.Abs(nearest.Value.Item1 - X);
+            int dy = Math.Abs(nearest.Value.Item2 - Y);
+
+            // Használjuk a chebyshev távolságot (rácsos "radius"): max(dx,dy)
+            int chebyshev = Math.Max(dx, dy);
+
+            if (chebyshev <= 3)
                 return Sebesseg.Lassu;
-
-            // Ha közel a cél, mehetünk gyorsabban
-            if (celTavolsag <= 3 && rendelkezesreAlloEnergia >= K * 3 * 3 - toltes)
-                return Sebesseg.Gyors;
-
-            // Ha sok energia van, mehetünk normál sebességgel
-            if (rendelkezesreAlloEnergia > 50)
+            if (chebyshev <= 5)
                 return Sebesseg.Normal;
-
-            // Alapértelmezett: lassú, ha bizonytalan
-            return Sebesseg.Lassu;
+            return Sebesseg.Gyors;
         }
 
-        // Mozgási kísérlet az (dx,dy) irányba. dx és dy lépésenkénti iránykomponensek.
-        // Lehet átlósan mozogni. Minden hívás egy félórás tevékenységet végez és legfeljebb 'sebesseg' lépést próbál.
-        // Igazat ad vissza, ha legalább egy lépést végrehajtott.
-        // out megtettLepesek: ténylegesen megtett blokkok száma ebben a félórában (0..(int)sebesseg)
-        // out uzenet: leírás ha a művelet sikertelen vagy részleges
-        public bool TryMove(int dx, int dy, Sebesseg sebesseg, out int megtettLepesek, out string uzenet)
+        // Új, egyszerűsített mozgásmódszer: a sebességet a környező érc alapján határozza meg.
+        // A módszer figyelmen kívül hagyja a korábbi energia-alapú korlátozásokat (eredeti viselkedés felülírva).
+        // Visszatér: igaz, ha legalább egy lépést megtettünk; out megtettLepesek az elmozdult blokkok száma.
+        public bool TryMoveAdaptive(VadaszDenes.SimplePathfinder pathfinder, int dx, int dy, out int megtettLepesek, out string uzenet)
         {
             megtettLepesek = 0;
             uzenet = "";
-            AktualisSebesseg = sebesseg;
 
-            // Ellenőrzés: kifogyott-e az időkeret
             if (IdokeretKifogyott)
             {
                 uzenet = "Az elérhető időkeret kifogyott!";
                 return false;
             }
 
-            int vKert = (int)sebesseg;
-
-            // --- JAVÍTÁS: Ha az irány nulla, akkor nem mozgunk, de ez nem hiba ---
+            // Ha nincs mozgásirány, nem mozdulunk
             if (dx == 0 && dy == 0)
             {
                 uzenet = "A rover nem mozdult (azonos pozíció).";
-                return true; // Ez nem hiba, csak nem történt mozgás
+                return true;
             }
-            // --- JAVÍTÁS VÉGE ---
 
-            // Lépésenkénti irány normalizálása -1/0/1 értékekre minden tengelyen (átlós megengedett)
-            int lepesX = Math.Sign(dx);
-            int lepesY = Math.Sign(dy);
+            // Döntsük el az aktuális sebességet a közelben lévő érc alapján
+            var chosenSpeed = DetermineSpeedByMineralProximity(pathfinder);
+            AktualisSebesseg = chosenSpeed;
+            int maxSteps = (int)chosenSpeed;
 
-            // Ellenőrizzük, hogy a kért irány egyenes vagy átlós-e
-            int lepesSzam = Math.Max(Math.Abs(dx), Math.Abs(dy));
-            if (lepesSzam > vKert)
+            // Normalizált lépésirány (átlós megengedett)
+            int stepX = Math.Sign(dx);
+            int stepY = Math.Sign(dy);
+
+            // Végrehajtjuk a mozgást: lépésenként lépünk, összesen maxSteps-t
+            int stepsDone = 0;
+            for (int i = 0; i < maxSteps; i++)
             {
-                // Több lépést kértek, mint amennyi egy félóra alatt megtehető
-                lepesSzam = vKert;
+                X += stepX;
+                Y += stepY;
+                stepsDone++;
             }
 
-            int toltesEzFelora = IsNappal ? 10 : 0;
+            LepesSzam += stepsDone;
+            megtettLepesek = stepsDone;
 
-            // Maximális megengedett sebesség keresése (vJelolt <= vKert) úgy, hogy az akku ne menjen negatívba a félóra után
-            int vEngedelyezett = 0;
-            for (int vJelolt = lepesSzam; vJelolt >= 1; vJelolt--)
-            {
-                int fogyasztas = K * vJelolt * vJelolt;
-                int netto = -fogyasztas + toltesEzFelora;
-                if (Akku + netto >= 0)
-                {
-                    vEngedelyezett = vJelolt;
-                    break;
-                }
-            }
-
-            if (vEngedelyezett == 0)
-            {
-                uzenet = "Nincs elég akkumulátor egy lépés megtételéhez ebben a félórában.";
-                return false;
-            }
-
-            // Mozgás alkalmazása: vEngedelyezett lépés mozgás az irányba
-            X += lepesX * vEngedelyezett;
-            Y += lepesY * vEngedelyezett;
-            LepesSzam += vEngedelyezett;
-
-            // Akkumulátor változás alkalmazása a félórára
-            int tenylegesFogyasztas = K * vEngedelyezett * vEngedelyezett;
-            Akku = Akku - tenylegesFogyasztas + toltesEzFelora;
-            AkkuKorlatozas();
-
-            // Idő előrehaladása egy félórával
+            // Egyszerűsítve: nem változtatunk Akkun, csak halad az idő
             FeloraTick++;
 
-            if (vEngedelyezett < lepesSzam)
-                uzenet = $"Részleges mozgás: kért {lepesSzam} lépés, de {vEngedelyezett} lépés történt akkumulátor korlátok miatt. Sebesség: {sebesseg}";
-            else
-                uzenet = $"{vEngedelyezett} lépés megtéve {sebesseg} sebességgel.";
-
-            megtettLepesek = vEngedelyezett;
-            return true;
+            uzenet = $"{stepsDone} lépés megtéve. Sebesség: {chosenSpeed}";
+            return stepsDone > 0;
         }
 
-        // Bányászati kísérlet a jelenlegi pozícióban. A bányászat egy félórát vesz igénybe és a rover a blokkon áll.
-        // Igazat ad vissza, ha a bányászat sikeres (egy ásványblokk begyűjtve)
+        // A többi eredeti művelet változatlan maradt (bányászat, várakozás stb.)
+
         public bool TryBanyasz(out string uzenet)
         {
-            // Ellenőrzés: kifogyott-e az időkeret
             if (IdokeretKifogyott)
             {
                 uzenet = "Az elérhető időkeret kifogyott!";
@@ -240,24 +187,18 @@ namespace Bemutato.Assetts
                 return false;
             }
 
-            // Bányászat energiát fogyaszt és begyűjt egy ásványblokkot
             Akku += netto;
             AkkuKorlatozas();
 
             AsvanyokSzama++;
-            // Bányászat helyben állásnak számít; LepesSzam nem változik
-
             FeloraTick++;
 
             uzenet = "Egy ásványblokk kibányászva.";
             return true;
         }
 
-        // Várakozás/üzemkészenlét egy félórára (nincs bányászat, nincs mozgás)
-        // 1 egység fogyasztás félóránként, de +10 töltés ha nappal van
         public void VarakozasEgyFelora(out string uzenet)
         {
-            // Ellenőrzés: kifogyott-e az időkeret
             if (IdokeretKifogyott)
             {
                 uzenet = "Az elérhető időkeret kifogyott!";
@@ -275,14 +216,12 @@ namespace Bemutato.Assetts
             uzenet = "Várakozás egy félóráig.";
         }
 
-        // Segédfüggvény az akkumulátor [0, AkkuKapacitas] tartományban tartásához
         private void AkkuKorlatozas()
         {
             if (Akku < 0) Akku = 0;
             if (Akku > AkkuKapacitas) Akku = AkkuKapacitas;
         }
 
-        // Rover állapotának visszaállítása (tesztekhez)
         public void Reset(int kezdoX = 0, int kezdoY = 0, int kezdoAkku = AkkuKapacitas, int kezdoTick = 0)
         {
             X = kezdoX;

@@ -7,10 +7,12 @@ namespace VadaszDenes
     {
         private string[,] map;
         private int size = 50;
+        private List<(int, int)> cachedMinerals;
 
         public SimplePathfinder(string[,] map)
         {
             this.map = map;
+            CacheMinerals();
         }
 
         private readonly (int, int)[] directions =
@@ -19,48 +21,72 @@ namespace VadaszDenes
             (-1,-1),(-1,1),(1,-1),(1,1)
         };
 
-        public (int, int)? FindNearestMineral(int startX, int startY)
+        private void CacheMinerals()
         {
-            double bestDist = double.MaxValue;
-            (int, int)? best = null;
-
+            cachedMinerals = new List<(int, int)>();
             for (int i = 0; i < size; i++)
             {
                 for (int j = 0; j < size; j++)
                 {
                     if (map[i, j] == "B" || map[i, j] == "Y" || map[i, j] == "G")
                     {
-                        double d = Math.Sqrt(
-                            (i - startX) * (i - startX) +
-                            (j - startY) * (j - startY));
-
-                        if (d < bestDist)
-                        {
-                            bestDist = d;
-                            best = (i, j);
-                        }
+                        cachedMinerals.Add((i, j));
                     }
+                }
+            }
+        }
+
+        public (int, int)? FindNearestMineral(int startX, int startY)
+        {
+            if (cachedMinerals.Count == 0)
+                return null;
+
+            double bestDist = double.MaxValue;
+            (int, int)? best = null;
+
+            foreach (var mineral in cachedMinerals)
+            {
+                double d = (mineral.Item1 - startX) * (mineral.Item1 - startX) +
+                           (mineral.Item2 - startY) * (mineral.Item2 - startY);
+
+                if (d < bestDist)
+                {
+                    bestDist = d;
+                    best = mineral;
                 }
             }
 
             return best;
         }
 
+        private double Heuristic((int, int) a, (int, int) b)
+        {
+            return Math.Abs(a.Item1 - b.Item1) + Math.Abs(a.Item2 - b.Item2);
+        }
+
         public List<(int, int)> FindPath((int, int) start, (int, int) goal)
         {
-            Queue<(int, int)> q = new Queue<(int, int)>();
-            Dictionary<(int, int), (int, int)> parent = new Dictionary<(int, int), (int, int)>();
-            HashSet<(int, int)> visited = new HashSet<(int, int)>();
+            var openSet = new List<(double score, (int, int) pos)>();
+            var cameFrom = new Dictionary<(int, int), (int, int)>();
+            var gScore = new Dictionary<(int, int), double>();
+            var visited = new HashSet<(int, int)>();
 
-            q.Enqueue(start);
-            visited.Add(start);
+            openSet.Add((0, start));
+            gScore[start] = 0;
 
-            while (q.Count > 0)
+            while (openSet.Count > 0)
             {
-                var current = q.Dequeue();
+                openSet.Sort((a, b) => a.score.CompareTo(b.score));
+                var current = openSet[0].pos;
+                openSet.RemoveAt(0);
 
                 if (current == goal)
-                    break;
+                    return ReconstructPath(cameFrom, current, start);
+
+                if (visited.Contains(current))
+                    continue;
+
+                visited.Add(current);
 
                 foreach (var d in directions)
                 {
@@ -78,23 +104,30 @@ namespace VadaszDenes
                     if (visited.Contains(next))
                         continue;
 
-                    visited.Add(next);
-                    parent[next] = current;
-                    q.Enqueue(next);
+                    double tentativeG = gScore[current] + 1;
+
+                    if (!gScore.ContainsKey(next) || tentativeG < gScore[next])
+                    {
+                        cameFrom[next] = current;
+                        gScore[next] = tentativeG;
+                        double fScore = tentativeG + Heuristic(next, goal);
+                        openSet.Add((fScore, next));
+                    }
                 }
             }
 
-            List<(int, int)> path = new List<(int, int)>();
+            return new List<(int, int)>();
+        }
 
-            if (!parent.ContainsKey(goal))
-                return path;
-
-            var step = goal;
+        private List<(int, int)> ReconstructPath(Dictionary<(int, int), (int, int)> cameFrom, (int, int) current, (int, int) start)
+        {
+            var path = new List<(int, int)>();
+            var step = current;
 
             while (step != start)
             {
                 path.Add(step);
-                step = parent[step];
+                step = cameFrom[step];
             }
 
             path.Reverse();

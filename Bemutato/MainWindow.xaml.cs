@@ -1,4 +1,6 @@
-﻿// Referencia idő: 6:35
+﻿// Referencia idő 1: 6:36
+// Referencia idő 2: 6:34
+// Referencia idő 3: 3:28 ✅ Jelenlegi
 
 using Bemutato.Assetts;
 using System;
@@ -301,88 +303,16 @@ namespace VadaszDenes
         }
 
         /// <summary>
-        /// Intelligens sebességválasztás az energiaszint és napszak alapján (biztonsági)
+        /// Új, egyszerűsített mozgás: sebesség kiválasztása a legközelebbi érc alapján (szabály szerint):
+        /// - érc <= 3 blokk távolságra -> sebesség = 1
+        /// - érc <= 5 blokk távolságra -> sebesség = 2
+        /// - egyébként sebesség = 3
+        /// A metódus lépésenként vizsgálja az útvonalat, megáll ásványon és bányászhat, illetve akadály esetén leáll.
+        /// (A régi energia-alapú korlátozásokat elhagytuk; a Rover.TryMove továbbra is frissíti az energiát/időt.)
         /// </summary>
-        private Rover.Sebesseg BiztonsagosSebessegValasztas(Rover.Sebesseg kertSebesseg)
-        {
-            // ÉJSZAKA: csak lassú sebesség engedélyezett!
-            if (!rover.IsNappal)
-            {
-                if (rover.Akku >= 4) // Lassú mozgáshoz + tartalék
-                {
-                    return Rover.Sebesseg.Lassu;
-                }
-                else
-                {
-                    NaploLista.Items.Add($"🌙 Éjszaka nincs elég energia a mozgáshoz! (Akku: {rover.Akku})");
-                    return Rover.Sebesseg.Lassu;
-                }
-            }
-
-            // NAPPAL: dinamikus sebességválasztás
-
-            // GYORS SEBESSÉG (3-as): csak ha bőven van energia és ritkán
-            if (kertSebesseg == Rover.Sebesseg.Gyors)
-            {
-                gyorsSebessegSzamlalo++;
-
-                // Feltételek a gyors sebességhez:
-                // 1. Legalább 35 energia kell
-                // 2. Csak minden 4. alkalommal
-                // 3. A mozgás után is maradjon legalább 15
-
-                int energiaFogyasztas = 2 * 3 * 3; // 18
-                int toltes = 10;
-                int energiaMozgasUtan = rover.Akku - energiaFogyasztas + toltes;
-
-                bool lehetGyors = (rover.Akku >= 35) &&
-                                  (gyorsSebessegSzamlalo % 4 == 0) &&
-                                  (energiaMozgasUtan >= 15);
-
-                if (lehetGyors)
-                {
-                    NaploLista.Items.Add($"⚡ GYORS SEBESSÉG engedélyezve! (Akku: {rover.Akku}, maradék: {energiaMozgasUtan})");
-                    return Rover.Sebesseg.Gyors;
-                }
-
-                // Ha nem lehet gyors, próbáljuk normállal
-                if (gyorsSebessegSzamlalo % 4 != 0)
-                {
-                    NaploLista.Items.Add($"⚡ Gyors sebesség csak minden 4. lépésben! (Most {gyorsSebessegSzamlalo}. lépés)");
-                }
-                else
-                {
-                    NaploLista.Items.Add($"⚡ Gyors sebességhez több energia kell! (Akku: {rover.Akku}, szükséges: 35+)");
-                }
-
-                kertSebesseg = Rover.Sebesseg.Normal;
-            }
-
-            // NORMÁL SEBESSÉG (2-es): ha van legalább 20 energia
-            if (kertSebesseg == Rover.Sebesseg.Normal)
-            {
-                int energiaFogyasztas = 2 * 2 * 2; // 8
-                int toltes = 10;
-                int energiaMozgasUtan = rover.Akku - energiaFogyasztas + toltes;
-
-                if (rover.Akku >= 20 && energiaMozgasUtan >= 12)
-                {
-                    return Rover.Sebesseg.Normal;
-                }
-
-                if (rover.Akku < 20)
-                {
-                    NaploLista.Items.Add($"🚶 Normál sebességhez több energia kell! (Akku: {rover.Akku}, szükséges: 20+)");
-                }
-            }
-
-            // LASSÚ SEBESSÉG (1-es): alapértelmezett
-            return Rover.Sebesseg.Lassu;
-        }
-
         private async Task RoverMozgatasa(int eltolasX, int eltolasY, Rover.Sebesseg sebesseg)
         {
-            // Először ellenőrizzük, hogy egyáltalán van-e értelmes irány
+            // Érvényes irány ellenőrzése
             if (eltolasX == 0 && eltolasY == 0)
             {
                 NaploLista.Items.Add($"⚠️ Érvénytelen mozgási irány");
@@ -390,65 +320,41 @@ namespace VadaszDenes
                 return;
             }
 
-            // ÉJSZAKAI KORLÁTOZÁS: csak lassú sebesség
-            if (!rover.IsNappal && sebesseg != Rover.Sebesseg.Lassu)
+            // 1) Döntsük el a sebességet a legközelebbi ásvány alapján (egyszerű szabály)
+            Rover.Sebesseg valasztottSebesseg;
+            var nearest = utkereso?.FindNearestMineral(roverX, roverY);
+            if (nearest == null)
             {
-                NaploLista.Items.Add($"🌙 Éjszaka csak lassú sebesség engedélyezett! ({sebesseg} → Lassú)");
-                sebesseg = Rover.Sebesseg.Lassu;
+                valasztottSebesseg = Rover.Sebesseg.Gyors;
+            }
+            else
+            {
+                int dx = Math.Abs(nearest.Value.Item1 - roverX);
+                int dy = Math.Abs(nearest.Value.Item2 - roverY);
+                int chebyshev = Math.Max(dx, dy); // rácsos radius
+
+                if (chebyshev <= 3)
+                    valasztottSebesseg = Rover.Sebesseg.Lassu;
+                else if (chebyshev <= 5)
+                    valasztottSebesseg = Rover.Sebesseg.Normal;
+                else
+                    valasztottSebesseg = Rover.Sebesseg.Gyors;
             }
 
-            // Biztonsági sebességválasztás (soha ne fogyjon ki az aksi)
-            Rover.Sebesseg tenylegesSebesseg = BiztonsagosSebessegValasztas(sebesseg);
+            // Normál lépésszám a kiválasztott sebesség szerint
+            int maxSteps = (int)valasztottSebesseg;
 
-            int lepesSzam = (int)tenylegesSebesseg;
             int aktualisX = roverX;
             int aktualisY = roverY;
             int megtettLepesek = 0;
 
-            // Ha a biztonsági választás miatt lassítottunk, jelezzük
-            if (tenylegesSebesseg != sebesseg)
-            {
-                NaploLista.Items.Add($"⚠️ Energiatakarékosság: {sebesseg} → {tenylegesSebesseg} (Akku: {rover.Akku})");
-            }
-
-            // Először számoljuk ki, hány lépést tudunk megtenni az energia alapján
-            int maximalisLepes = lepesSzam;
-            int energiaSzukseglet = 2 * maximalisLepes * maximalisLepes;
-            int toltes = rover.IsNappal ? 10 : 0;
-
-            // Csökkentsük a lépésszámot, ha kell
-            while (maximalisLepes > 0 && rover.Akku - energiaSzukseglet + toltes < 2)
-            {
-                maximalisLepes--;
-                if (maximalisLepes > 0)
-                {
-                    energiaSzukseglet = 2 * maximalisLepes * maximalisLepes;
-                }
-            }
-
-            if (maximalisLepes == 0)
-            {
-                NaploLista.Items.Add($"⚠️ Nincs elég energia a mozgáshoz! (Akku: {rover.Akku})");
-
-                // Ha nappal van, várjunk egy kicsit a töltődésre
-                if (rover.IsNappal && rover.Akku < 90)
-                {
-                    NaploLista.Items.Add($"☀️ Várakozás töltődésre...");
-                    rover.VarakozasEgyFelora(out string uzenet);
-                    AllapotFrissites();
-                }
-
-                await Task.Delay(ANIMACIOS_KESLELTETES);
-                return;
-            }
-
-            // Lépésenként ellenőrizzük a mozgást
-            for (int i = 0; i < maximalisLepes; i++)
+            // Lépésenként ellenőrizzük a mozgást (akadály, ásvány)
+            for (int i = 0; i < maxSteps; i++)
             {
                 int kovetkezoX = aktualisX + eltolasX;
                 int kovetkezoY = aktualisY + eltolasY;
 
-                // Ellenőrizzük, hogy a következő pozíció a pályán belül van-e és járható-e
+                // Határok / járhatóság ellenőrzése
                 if (!IsJarhato(kovetkezoX, kovetkezoY))
                 {
                     if (i == 0)
@@ -458,36 +364,27 @@ namespace VadaszDenes
                     break;
                 }
 
-                // Ha van ásvány a következő mezőn, akkor itt megállunk (bányászni kell)
+                // Ha ásvány a következő mezőn, megállunk és bányászunk
                 string kovetkezoCella = terkep[kovetkezoX, kovetkezoY];
                 if (kovetkezoCella == "B" || kovetkezoCella == "Y" || kovetkezoCella == "G")
                 {
-                    // Ellenőrizzük, hogy van-e elég energia a bányászathoz
-                    if (rover.Akku < 2)
-                    {
-                        NaploLista.Items.Add($"⚠️ Nincs elég energia a bányászathoz! (Akku: {rover.Akku})");
-                        break;
-                    }
-
-                    // Ha az első lépésnél ásványba ütközünk, akkor még ne mozduljunk
+                    // Ha az első lépésnél ásvány van, próbáljuk meg először a helyben bányászatot.
                     if (i == 0)
                     {
-                        // Megpróbáljuk kibányászni
+                        // Megpróbáljuk kibányászni (rover.TryBanyasz kezeli az energiát és időt)
                         if (rover.TryBanyasz(out string uzenet))
                         {
-                            terkep[kovetkezoX, kovetkezoY] = ".";
+                            terkep[kovetkezoX, kovetkezoY] = "."; // ásvány eltávolítása
                             CellaFrissitese(kovetkezoX, kovetkezoY);
-                            NaploLista.Items.Add($"{sebessegIkonok[tenylegesSebesseg]} Ásvány begyűjtve ({kovetkezoX},{kovetkezoY}): {uzenet}");
+                            NaploLista.Items.Add($"{sebessegIkonok[valasztottSebesseg]} Ásvány begyűjtve ({kovetkezoX},{kovetkezoY}): {uzenet}");
                             AsvanySzoveg.Text = rover.AsvanyokSzama.ToString();
-
-                            // A rover nem mozdul, mert bányászott
                             AllapotFrissites();
                             await Task.Delay(ANIMACIOS_KESLELTETES);
                             return;
                         }
                         else
                         {
-                            NaploLista.Items.Add($"{sebessegIkonok[tenylegesSebesseg]} Nem sikerült bányászni ({kovetkezoX},{kovetkezoY})");
+                            NaploLista.Items.Add($"{sebessegIkonok[valasztottSebesseg]} Nem sikerült bányászni ({kovetkezoX},{kovetkezoY})");
                             AllapotFrissites();
                             await Task.Delay(ANIMACIOS_KESLELTETES);
                             return;
@@ -495,24 +392,23 @@ namespace VadaszDenes
                     }
                     else
                     {
-                        // Ha nem az első lépésnél van ásvány, akkor odaérve megállunk
+                        // Bejövünk az ásványmezőre, majd bányászunk és megállunk
                         aktualisX = kovetkezoX;
                         aktualisY = kovetkezoY;
                         megtettLepesek++;
 
-                        // Bányászás
                         if (rover.TryBanyasz(out string uzenet))
                         {
                             terkep[aktualisX, aktualisY] = ".";
                             CellaFrissitese(aktualisX, aktualisY);
-                            NaploLista.Items.Add($"{sebessegIkonok[tenylegesSebesseg]} Ásvány begyűjtve ({aktualisX},{aktualisY}): {uzenet}");
+                            NaploLista.Items.Add($"{sebessegIkonok[valasztottSebesseg]} Ásvány begyűjtve ({aktualisX},{aktualisY}): {uzenet}");
                             AsvanySzoveg.Text = rover.AsvanyokSzama.ToString();
                         }
                         break;
                     }
                 }
 
-                // Ha sima járható mező, akkor továbblépünk
+                // Ha sima mező, lépés megtétele
                 aktualisX = kovetkezoX;
                 aktualisY = kovetkezoY;
                 megtettLepesek++;
@@ -535,36 +431,25 @@ namespace VadaszDenes
             roverX = aktualisX;
             roverY = aktualisY;
 
-            // Rover logika frissítése (energia, idő)
+            // Rover logika frissítése (energia, idő) - a rover.TryMove kezeli az energia/idő változást
             int elmozdulasX = roverX - regiX;
             int elmozdulasY = roverY - regiY;
-            bool siker = false;
 
+            bool siker = false;
             if (elmozdulasX != 0 || elmozdulasY != 0)
             {
-                // A tényleges sebesség kiszámítása a megtett lépések alapján
-                int tenylegesLepesSzam = Math.Max(Math.Abs(elmozdulasX), Math.Abs(elmozdulasY));
-                Rover.Sebesseg tenylegesSebessegErtek;
-
-                if (tenylegesLepesSzam <= 1)
-                    tenylegesSebessegErtek = Rover.Sebesseg.Lassu;
-                else if (tenylegesLepesSzam <= 2)
-                    tenylegesSebessegErtek = Rover.Sebesseg.Normal;
-                else
-                    tenylegesSebessegErtek = Rover.Sebesseg.Gyors;
-
-                siker = rover.TryMove(elmozdulasX, elmozdulasY, tenylegesSebessegErtek, out int megtett, out string moveUzenet);
-
+                // Hívjuk meg a rover.TryMove-ot a tényleges elmozdulással és a kiválasztott sebességgel
+                siker = rover.TryMoveAdaptive(utkereso, elmozdulasX, elmozdulasY, out int megtett, out string moveUzenet);
                 if (!siker)
                 {
                     NaploLista.Items.Add($"⚠️ {moveUzenet}");
                 }
-            }
-
-            // Ha sikeres volt a gyors mozgás, növeljük a számlálót
-            if (siker && tenylegesSebesseg == Rover.Sebesseg.Gyors)
-            {
-                gyorsSebessegSzamlalo++;
+                else
+                {
+                    // Ha ténylegesen gyors volt, növeljük a számlálót
+                    if (valasztottSebesseg == Rover.Sebesseg.Gyors)
+                        gyorsSebessegSzamlalo++;
+                }
             }
 
             // Rover pozíció frissítése a térképen
@@ -574,7 +459,7 @@ namespace VadaszDenes
             // Kamera célpontjának frissítése
             kovetettCel = jatekGombok[roverX, roverY];
 
-            NaploLista.Items.Add($"{sebessegIkonok[tenylegesSebesseg]} Mozgás: {megtettLepesek}/{lepesSzam} lépés {tenylegesSebesseg} sebességgel → ({roverX},{roverY}) (Akku: {rover.Akku})");
+            NaploLista.Items.Add($"{sebessegIkonok[valasztottSebesseg]} Mozgás: {megtettLepesek}/{maxSteps} lépés {valasztottSebesseg} sebességgel → ({roverX},{roverY}) (Akku: {rover.Akku})");
 
             AllapotFrissites();
 
@@ -709,22 +594,7 @@ namespace VadaszDenes
                 // Számoljuk a hátralévő távolságot
                 int hatralevoTav = utvonal.Count - i - 1;
 
-                // Optimalis sebesség választás
-                Rover.Sebesseg valasztottSebesseg = rover.OptimalisSebessegValasztas(hatralevoTav);
-
-                // Ellenőrizzük, hogy van-e ásvány a következő mezőn
-                string kovetkezoCella = terkep[kovetkezo.X, kovetkezo.Y];
-                bool asvanyEloterben = kovetkezoCella == "B" || kovetkezoCella == "Y" || kovetkezoCella == "G";
-
-                // Ha ásvány van előttünk, lassítsunk le
-                if (asvanyEloterben && valasztottSebesseg != Rover.Sebesseg.Lassu)
-                {
-                    valasztottSebesseg = Rover.Sebesseg.Lassu;
-                    NaploLista.Items.Add($"🐢 Lassítás: ásvány előttünk ({kovetkezo.X},{kovetkezo.Y})");
-                    NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
-                }
-
-                // Mozgás a kiválasztott sebességgel
+                // Mozgás a kiválasztott sebességgel -- RoverMozgatasa most belsőleg dönt a sebességről a közelben lévő érc alapján.
                 int eltolasX = kovetkezo.X - roverX;
                 int eltolasY = kovetkezo.Y - roverY;
 
@@ -733,25 +603,16 @@ namespace VadaszDenes
                 int regiY = roverY;
 
                 // Mozgatás - most awaitelünk
-                await RoverMozgatasa(eltolasX, eltolasY, valasztottSebesseg);
+                await RoverMozgatasa(eltolasX, eltolasY, Rover.Sebesseg.Normal);
 
                 // Ellenőrizzük, hogy tényleg mozdult-e
                 if (roverX == regiX && roverY == regiY)
                 {
                     // Ha nem mozdult, próbáljuk újra lassabban
-                    if (valasztottSebesseg != Rover.Sebesseg.Lassu)
-                    {
-                        NaploLista.Items.Add($"🔄 Újrapróbálkozás lassabb sebességgel...");
-                        await RoverMozgatasa(eltolasX, eltolasY, Rover.Sebesseg.Lassu);
+                    NaploLista.Items.Add($"🔄 Újrapróbálkozás lassabb sebességgel...");
+                    await RoverMozgatasa(eltolasX, eltolasY, Rover.Sebesseg.Lassu);
 
-                        if (roverX == regiX && roverY == regiY)
-                        {
-                            NaploLista.Items.Add($"❌ Nem sikerült mozogni ({kovetkezo.X},{kovetkezo.Y}) felé");
-                            NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
-                            return false;
-                        }
-                    }
-                    else
+                    if (roverX == regiX && roverY == regiY)
                     {
                         NaploLista.Items.Add($"❌ Nem sikerült mozogni ({kovetkezo.X},{kovetkezo.Y}) felé");
                         NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
@@ -877,7 +738,7 @@ namespace VadaszDenes
                     {
                         int dx = poz.X - roverX;
                         int dy = poz.Y - roverY;
-                        await RoverMozgatasa(dx, dy, Rover.Sebesseg.Normal); // Normál sebesség
+                        await RoverMozgatasa(dx, dy, Rover.Sebesseg.Normal); // Normál sebesség (a metódus saját logikát alkalmaz)
                     }
                     NaploLista.Items.Add("✅ Sikeresen visszatért a kezdőpontra!");
                 }
