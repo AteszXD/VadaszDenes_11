@@ -7,9 +7,14 @@ namespace Bemutato.Assetts
         #region Mezők
         private const int AkkuKapacitas = 100;
         private const int K = 2; // fogyasztási konstans: E = k * v^2
-        private const int NappalFelorak = 16 * 2; // 16 óra -> félóra egységek
-        private const int EjszakaFelorak = 8 * 2; // 8 óra -> félóra egységek
-        private const int CiklusFelorak = NappalFelorak + EjszakaFelorak; // 48 félóra
+        private const int NappalOrak = 16; // 16 óra nappali
+        private const int EjszakaOrak = 8;  // 8 óra éjszakai
+        private const int NappalFelorak = NappalOrak * 2;
+        private const int EjszakaFelorak = EjszakaOrak * 2;
+        private const int CiklusFelorak = NappalFelorak + EjszakaFelorak; // 48 félóra (24 óra)
+
+        // Dinamikus időkeret
+        private int maximalalisFeloraTick; // Az elérhető időkeret félórákban
         #endregion
 
         #region Tulajdonságok
@@ -35,8 +40,23 @@ namespace Bemutato.Assetts
             Gyors = 3    // 3 blokk / félóra
         }
 
-        public Rover()
+        /// <summary>
+        /// Konstruktor az elérhető időkerettel (órákban)
+        /// </summary>
+        /// <param name="eloirhetoIdokeretOrak">Az elérhető időkeret órákban (legalább 24)</param>
+        public Rover(int eloirhetoIdokeretOrak = 24)
         {
+            // Validáció: az időkeret legalább 24 óra
+            if (eloirhetoIdokeretOrak < 24)
+            {
+                throw new ArgumentException(
+                    $"Az elérhető időkeret legalább 24 óra kell legyen. Megadott érték: {eloirhetoIdokeretOrak} óra.",
+                    nameof(eloirhetoIdokeretOrak));
+            }
+
+            // Félórákra konvertálás (1 óra = 2 félóra)
+            maximalalisFeloraTick = eloirhetoIdokeretOrak * 2;
+
             X = 0;
             Y = 0;
             Akku = AkkuKapacitas;
@@ -57,6 +77,15 @@ namespace Bemutato.Assetts
                 return t >= nappalKezdet && t < nappalVeg;
             }
         }
+
+        // Visszaadja, hogy kifogyott-e az időkeret
+        public bool IdokeretKifogyott => FeloraTick >= maximalalisFeloraTick;
+
+        // Visszaadja az elérhető időkeret órákban
+        public int ElerhetoIdokeretOrak => maximalalisFeloraTick / 2;
+
+        // Visszaadja a hátralévő időt órákban
+        public int HatralevoIdoOrak => Math.Max(0, (maximalalisFeloraTick - FeloraTick) / 2);
 
         // Visszaadja a becsomagolt félóra indexet a 24 órás ciklusban (0..47)
         public int FeloraIndexANapban => FeloraTick % CiklusFelorak;
@@ -117,6 +146,13 @@ namespace Bemutato.Assetts
             megtettLepesek = 0;
             uzenet = "";
             AktualisSebesseg = sebesseg;
+
+            // Ellenőrzés: kifogyott-e az időkeret
+            if (IdokeretKifogyott)
+            {
+                uzenet = "Az elérhető időkeret kifogyott!";
+                return false;
+            }
 
             int vKert = (int)sebesseg;
 
@@ -187,6 +223,13 @@ namespace Bemutato.Assetts
         // Igazat ad vissza, ha a bányászat sikeres (egy ásványblokk begyűjtve)
         public bool TryBanyasz(out string uzenet)
         {
+            // Ellenőrzés: kifogyott-e az időkeret
+            if (IdokeretKifogyott)
+            {
+                uzenet = "Az elérhető időkeret kifogyott!";
+                return false;
+            }
+
             int banyaszFogyasztas = 2; // félóránként bányászat közben
             int toltesEzFelora = IsNappal ? 10 : 0;
             int netto = -banyaszFogyasztas + toltesEzFelora;
@@ -214,6 +257,13 @@ namespace Bemutato.Assetts
         // 1 egység fogyasztás félóránként, de +10 töltés ha nappal van
         public void VarakozasEgyFelora(out string uzenet)
         {
+            // Ellenőrzés: kifogyott-e az időkeret
+            if (IdokeretKifogyott)
+            {
+                uzenet = "Az elérhető időkeret kifogyott!";
+                return;
+            }
+
             int keszenletFogyasztas = 1;
             int toltesEzFelora = IsNappal ? 10 : 0;
             int netto = -keszenletFogyasztas + toltesEzFelora;

@@ -13,5 +13,6 @@ namespace VadaszDenes
     /// </summary>
     public partial class App : Application
     {
+        public int ElerhetoIdokeretOrak { get; set; } = 960;
     }
 }

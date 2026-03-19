@@ -55,8 +55,11 @@ namespace VadaszDenes
         {
             TerkepBetoltese();
 
-            // Rover logika inicializálása és kezdőpozíció szinkronizálása a betöltött térképről
-            rover = new Rover();
+            // Rover logika inicializálása az App-ból vett időkerettel
+            App app = Application.Current as App;
+            int eloirhetoIdoOrak = app?.ElerhetoIdokeretOrak ?? 24;
+            
+            rover = new Rover(eloirhetoIdoOrak);
             rover.Reset(roverX, roverY);
 
             InitializeComponent();
@@ -777,7 +780,7 @@ namespace VadaszDenes
             NaploLista.Items.Add($"🔍 Összesen {asvanyok.Count} ásvány található");
             NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
 
-            int gyujtott = 0;
+            int osszes = asvanyok.Count;
             int energiaFigyelo = 0;
 
             // 2️⃣ Amíg van ásvány a listában
@@ -806,9 +809,8 @@ namespace VadaszDenes
                 if (sikerult)
                 {
                     // 2c️⃣ Felszedett ásvány eltávolítása a listából
-                    gyujtott++;
                     asvanyok.RemoveAll(m => m.X == roverX && m.Y == roverY);
-                    NaploLista.Items.Add($"✅ Begyűjtve! ({gyujtott}/{gyujtott + asvanyok.Count}) (Akku: {rover.Akku})");
+                    NaploLista.Items.Add($"✅ Begyűjtve! ({lblAsvanyok.Text}/{osszes}) (Akku: {rover.Akku})");
                     NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
                     energiaFigyelo = 0;
                 }
@@ -847,7 +849,7 @@ namespace VadaszDenes
                 }
             }
 
-            NaploLista.Items.Add($"=== ÁSVÁNYGYŰJTÉS BEFEJEZVE === Összesen {gyujtott} ásványt gyűjtöttünk! (Maradék energia: {rover.Akku})");
+            NaploLista.Items.Add($"=== ÁSVÁNYGYŰJTÉS BEFEJEZVE === Összesen {lblAsvanyok} ásványt gyűjtöttünk! (Maradék energia: {rover.Akku})");
             NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
         }
 
