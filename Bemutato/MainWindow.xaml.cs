@@ -18,6 +18,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace VadaszDenes
 {
@@ -36,6 +37,8 @@ namespace VadaszDenes
         private int kezdoY;
         private SimplePathfinder utkereso;
         private Rover rover; // rover logika (akkumulátor, idő, statisztikák)
+        private DateTime timerVege; // Meddig fusson az időhöz kötött gyűjtés
+        private System.Timers.Timer visszaSzamoloTimer; // Timer a visszaszámlálóhoz
 
         private FrameworkElement kovetettCel; // Ezt a gombot/képet követjük
         private double simasag = 0.05; // Még simább mozgás (0.05 = nagyon lassú követés)
@@ -154,6 +157,7 @@ namespace VadaszDenes
                 }
             }
         }
+
 
         private void JatekTerGeneralas()
         {
@@ -562,6 +566,42 @@ namespace VadaszDenes
             AllapotFrissites();
             await Task.Delay(ANIMACIOS_KESLELTETES);
         }
+        private void BtnInditas_Click(object sender, RoutedEventArgs e)
+        {
+            // Idő beolvasása
+            if (!TimeSpan.TryParseExact(txtIdo.Text.Trim(), @"mm\:ss", null, out TimeSpan ido))
+            {
+                MessageBox.Show("Hibás formátum! Használd a mm:ss formátumot (pl. 05:30)");
+                return;
+            }
+
+            timerVege = DateTime.Now.Add(ido);
+
+            // Timer indítása a lblIdo frissítéséhez
+            visszaSzamoloTimer = new System.Timers.Timer(500);
+            visszaSzamoloTimer.Elapsed += VisszaSzamoloTimer_Elapsed;
+            visszaSzamoloTimer.AutoReset = true;
+            visszaSzamoloTimer.Start();
+
+            // Ásványgyűjtés időhöz kötve
+            _ = OsszesAsvanyGyujteseAsync(true);
+        }
+        private void VisszaSzamoloTimer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                TimeSpan maradt = timerVege - DateTime.Now;
+                if (maradt.TotalSeconds <= 0)
+                {
+                    lblIdo.Text = "⏰ 00:00";
+                    visszaSzamoloTimer.Stop();
+                }
+                else
+                {
+                    lblIdo.Text = $"⏰ {maradt.Minutes:D2}:{maradt.Seconds:D2}";
+                }
+            });
+        }
 
         private void BtnBanyasz_Click(object sender, RoutedEventArgs e)
         {
@@ -626,7 +666,7 @@ namespace VadaszDenes
             return true;
         }
 
-        private async Task OsszesAsvanyGyujteseAsync()
+        private async Task OsszesAsvanyGyujteseAsync(bool idoKozott = false)
         {
             NaploLista.Items.Add("=== ÁSVÁNYGYŰJTÉS KEZDÉSE ===");
             NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
@@ -650,10 +690,17 @@ namespace VadaszDenes
             int osszes = asvanyok.Count;
             int energiaFigyelo = 0;
 
-            // 2️⃣ Amíg van ásvány a listában
+            // 2️⃣ Gyűjtés ciklus
             while (asvanyok.Count > 0)
             {
-                // Ha nagyon kevés az energia, várjunk a töltődésre
+                // Idő lejárat ellenőrzése (ha időhöz kötött)
+                if (idoKozott && DateTime.Now >= timerVege)
+                {
+                    NaploLista.Items.Add("⏱️ Idő lejárt, a gyűjtés megszakad, visszatérés indul...");
+                    break;
+                }
+
+                // Energiakezelés
                 if (rover.Akku < 5 && rover.IsNappal)
                 {
                     NaploLista.Items.Add($"☀️ Energiatakarékos várakozás (Akku: {rover.Akku})...");
@@ -663,19 +710,16 @@ namespace VadaszDenes
                     continue;
                 }
 
-                // 2a️⃣ Legközelebbi ásvány kiválasztása (Manhattan távolság)
+                // Legközelebbi ásvány kiválasztása
                 var kovetkezoCel = asvanyok.OrderBy(m => Math.Abs(m.X - roverX) + Math.Abs(m.Y - roverY)).First();
-
                 int tavolsag = Math.Abs(kovetkezoCel.X - roverX) + Math.Abs(kovetkezoCel.Y - roverY);
                 NaploLista.Items.Add($"🎯 Cél: ({kovetkezoCel.X},{kovetkezoCel.Y}) - Távolság: {tavolsag} (Akku: {rover.Akku})");
                 NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
 
-                // 2b️⃣ Útvonal keresés a célhoz
                 bool sikerult = await UtkeresesCelhozAsync(kovetkezoCel.X, kovetkezoCel.Y);
 
                 if (sikerult)
                 {
-                    // 2c️⃣ Felszedett ásvány eltávolítása a listából
                     asvanyok.RemoveAll(m => m.X == roverX && m.Y == roverY);
                     NaploLista.Items.Add($"✅ Begyűjtve! ({lblAsvanyok.Text}/{osszes}) (Akku: {rover.Akku})");
                     NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
@@ -684,8 +728,6 @@ namespace VadaszDenes
                 else
                 {
                     energiaFigyelo++;
-
-                    // Ha többször nem sikerült, lehet hogy nincs elég energia
                     if (energiaFigyelo > 3)
                     {
                         if (rover.IsNappal)
@@ -702,7 +744,6 @@ namespace VadaszDenes
                         }
                         else
                         {
-                            // Ha éjszaka van és nem sikerül, lehet hogy ez az ásvány elérhetetlen
                             NaploLista.Items.Add($"⚠️ Elérhetetlen ásvány, kihagyás...");
                             asvanyok.Remove(kovetkezoCel);
                             energiaFigyelo = 0;
@@ -710,38 +751,29 @@ namespace VadaszDenes
                     }
                     else
                     {
-                        // Ha nem sikerült, próbáljuk újra
                         await Task.Delay(ANIMACIOS_KESLELTETES);
                     }
                 }
             }
-            // Visszatérés a kezdőpontra
+
+            // 🔹 Visszatérés a starthelyre mindig
             NaploLista.Items.Add("🏠 Visszatérés a kezdőpontra...");
             NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
 
-            // Először ellenőrizzük, hogy nem vagyunk már a starton
-            if (roverX == kezdoX && roverY == kezdoY)
+            var visszaUt = UtvonalKeresese(roverX, roverY, kezdoX, kezdoY);
+            if (visszaUt != null)
             {
-                NaploLista.Items.Add("✅ Már a kezdőponton vagyunk!");
+                foreach (var poz in visszaUt.Skip(1))
+                {
+                    int dx = poz.X - roverX;
+                    int dy = poz.Y - roverY;
+                    await RoverMozgatasa(dx, dy, Rover.Sebesseg.Normal);
+                }
+                NaploLista.Items.Add("✅ Rover visszatért a kezdőpontra!");
             }
             else
             {
-                var visszaUt = UtvonalKeresese(roverX, roverY, kezdoX, kezdoY);
-                if (visszaUt == null)
-                {
-                    NaploLista.Items.Add("❌ Nincs elérhető útvonal a kezdőpontra!");
-                }
-                else
-                {
-                    // Minden lépést await-el hívunk a sima mozgatáshoz
-                    foreach (var poz in visszaUt.Skip(1)) // Skip(1) mert az első a jelenlegi pozíció
-                    {
-                        int dx = poz.X - roverX;
-                        int dy = poz.Y - roverY;
-                        await RoverMozgatasa(dx, dy, Rover.Sebesseg.Normal); // Normál sebesség (a metódus saját logikát alkalmaz)
-                    }
-                    NaploLista.Items.Add("✅ Sikeresen visszatért a kezdőpontra!");
-                }
+                NaploLista.Items.Add("❌ Nincs elérhető útvonal a kezdőpontra!");
             }
 
             NaploLista.Items.Add($"=== ÁSVÁNYGYŰJTÉS BEFEJEZVE === Összesen {lblAsvanyok.Text} ásványt gyűjtöttünk! (Maradék energia: {rover.Akku})");

@@ -12,6 +12,8 @@
 
         <!-- Alsó státuszpanel Borderrel a Padding miatt -->
         <Border DockPanel.Dock="Bottom" Background="#222" Padding="8">
+            
+            
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <TextBlock x:Name="lblAkkumulator" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
                 <TextBlock x:Name="lblIdo" Foreground="White" Margin="0,0,12,0" VerticalAlignment="Center"/>
@@ -23,7 +25,13 @@
 
         <!-- Jobboldali napló + vezérlőpult panel -->
         <Border DockPanel.Dock="Right" Width="220" Background="#333" Padding="5">
+            
             <StackPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBox Name="txtIdo" Width="80" Height="30" Text="00:30" />
+                    <Button Name="btnInditas" Width="100" Height="30" Content="Indítás" Click="BtnInditas_Click"/>
+                </StackPanel>
                 <TextBlock Text="Begyűjtött ásványok:" Foreground="White" FontWeight="Bold"/>
                 <TextBlock x:Name="AsvanySzoveg" Text="0" Foreground="White" Margin="0,0,0,10"/>
 
