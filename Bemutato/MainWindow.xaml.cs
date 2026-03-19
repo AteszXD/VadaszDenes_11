@@ -28,6 +28,8 @@ namespace VadaszDenes
 
         private int roverX;
         private int roverY;
+        private int kezdoX;
+        private int kezdoY;
         private SimplePathfinder utkereso;
         private Rover rover; // rover logika (akkumulátor, idő, statisztikák)
 
@@ -186,7 +188,9 @@ namespace VadaszDenes
                     if (terkep[i, j] == "S")
                     {
                         roverX = i; // Sor index tárolása
-                        roverY = j; // Oszlop index tárolása
+                        roverY = j;
+                        kezdoX = i; // start X
+                        kezdoY = j; // start Y// Oszlop index tárolása
                     }
                 }
             }
@@ -371,7 +375,7 @@ namespace VadaszDenes
             return Rover.Sebesseg.Lassu;
         }
 
-        private async void RoverMozgatasa(int eltolasX, int eltolasY, Rover.Sebesseg sebesseg)
+        private async Task RoverMozgatasa(int eltolasX, int eltolasY, Rover.Sebesseg sebesseg)
         {
             // Először ellenőrizzük, hogy egyáltalán van-e értelmes irány
             if (eltolasX == 0 && eltolasY == 0)
@@ -846,8 +850,35 @@ namespace VadaszDenes
                     }
                 }
             }
+            // Visszatérés a kezdőpontra
+            NaploLista.Items.Add("🏠 Visszatérés a kezdőpontra...");
+            NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
 
-            NaploLista.Items.Add($"=== ÁSVÁNYGYŰJTÉS BEFEJEZVE === Összesen {gyujtott} ásványt gyűjtöttünk! (Maradék energia: {rover.Akku})");
+            // Először ellenőrizzük, hogy nem vagyunk már a starton
+            if (roverX == kezdoX && roverY == kezdoY)
+            {
+                NaploLista.Items.Add("✅ Már a kezdőponton vagyunk!");
+            }
+            else
+            {
+                var visszaUt = UtvonalKeresese(roverX, roverY, kezdoX, kezdoY);
+                if (visszaUt == null)
+                {
+                    NaploLista.Items.Add("❌ Nincs elérhető útvonal a kezdőpontra!");
+                }
+                else
+                {
+                    // Minden lépést await-el hívunk a sima mozgatáshoz
+                    foreach (var poz in visszaUt.Skip(1)) // Skip(1) mert az első a jelenlegi pozíció
+                    {
+                        int dx = poz.X - roverX;
+                        int dy = poz.Y - roverY;
+                        await RoverMozgatasa(dx, dy, Rover.Sebesseg.Normal); // Normál sebesség
+                    }
+                    NaploLista.Items.Add("✅ Sikeresen visszatért a kezdőpontra!");
+                }
+            }
+
             NaploLista.ScrollIntoView(NaploLista.Items[NaploLista.Items.Count - 1]);
         }
 
