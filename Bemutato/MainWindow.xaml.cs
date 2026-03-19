@@ -258,10 +258,10 @@ namespace VadaszDenes
         {
             switch (e.Key)
             {
-                case Key.W: case Key.Up: RoverMozgatasa(-1, 0, Rover.Sebesseg.Normal); break;
-                case Key.S: case Key.Down: RoverMozgatasa(1, 0, Rover.Sebesseg.Normal); break;
-                case Key.A: case Key.Left: RoverMozgatasa(0, -1, Rover.Sebesseg.Normal); break;
-                case Key.D: case Key.Right: RoverMozgatasa(0, 1, Rover.Sebesseg.Normal); break;
+                // case Key.W: case Key.Up: RoverMozgatasa(-1, 0, Rover.Sebesseg.Normal); break;
+                // case Key.S: case Key.Down: RoverMozgatasa(1, 0, Rover.Sebesseg.Normal); break;
+                // case Key.A: case Key.Left: RoverMozgatasa(0, -1, Rover.Sebesseg.Normal); break;
+                // case Key.D: case Key.Right: RoverMozgatasa(0, 1, Rover.Sebesseg.Normal); break;
                 case Key.Space:
                     await OsszesAsvanyGyujteseAsync();
                     break;
