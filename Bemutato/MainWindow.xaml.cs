@@ -1,4 +1,6 @@
-﻿using Bemutato.Assetts;
+﻿// Referencia idő: 6:35
+
+using Bemutato.Assetts;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -730,8 +732,8 @@ namespace VadaszDenes
                 int regiX = roverX;
                 int regiY = roverY;
 
-                // Mozgatás
-                RoverMozgatasa(eltolasX, eltolasY, valasztottSebesseg);
+                // Mozgatás - most awaitelünk
+                await RoverMozgatasa(eltolasX, eltolasY, valasztottSebesseg);
 
                 // Ellenőrizzük, hogy tényleg mozdult-e
                 if (roverX == regiX && roverY == regiY)
@@ -740,7 +742,7 @@ namespace VadaszDenes
                     if (valasztottSebesseg != Rover.Sebesseg.Lassu)
                     {
                         NaploLista.Items.Add($"🔄 Újrapróbálkozás lassabb sebességgel...");
-                        RoverMozgatasa(eltolasX, eltolasY, Rover.Sebesseg.Lassu);
+                        await RoverMozgatasa(eltolasX, eltolasY, Rover.Sebesseg.Lassu);
 
                         if (roverX == regiX && roverY == regiY)
                         {
